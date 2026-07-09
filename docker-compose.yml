@@ -1,0 +1,16 @@
+# Optional Qdrant for colpali-rag at scale. You do NOT need this to try the tool —
+# the default in-process store needs zero infrastructure. Bring this up only when
+# you set COLPALI_STORE=qdrant and QDRANT_URL=http://localhost:6333.
+#
+#   docker compose up -d qdrant
+#   COLPALI_STORE=qdrant QDRANT_URL=http://localhost:6333 colpali-rag index ./pdfs
+#
+services:
+  qdrant:
+    image: qdrant/qdrant:latest
+    ports:
+      - "6333:6333"   # REST/gRPC
+      - "6334:6334"   # gRPC
+    volumes:
+      - ./qdrant_storage:/qdrant/storage
+    restart: unless-stopped
