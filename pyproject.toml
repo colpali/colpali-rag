@@ -20,17 +20,22 @@ dependencies = [
 # ColPali retrieval + heatmaps. Runs on CPU locally; MPS/GPU for scale.
 # NOTE (Mac/MPS): if you set device 'mps', pin torch==2.5.1 (2.6+ breaks ColVision on MPS).
 rag = [
-    "colpali-engine>=0.3.7",
+    # PINNED: the model dispatch + cross-model heatmap depend on this exact API surface
+    # (class names ColQwen3/ColGemma3/ColModernVBert, processor mask methods). Bump
+    # deliberately and re-run the model-family contract tests — do not float this.
+    "colpali-engine==0.3.17",
     "torch>=2.5",
     "pypdfium2>=4.30",   # Apache-2.0/BSD (bundles PDFium); no OCR, no Poppler
     "pillow>=10",
     "numpy>=1.26",
-    "einops>=0.8",       # required by colpali-engine interpretability (similarity maps)
+    "einops>=0.8",
 ]
 # HTTP service + web UI + the optional (vendor-neutral) answer model over HTTP.
 api = ["fastapi>=0.110", "uvicorn>=0.29", "httpx>=0.27"]
 # Multivector store at scale (embedded on-disk, or a server via QDRANT_URL).
-qdrant = ["qdrant-client>=1.12"]
+qdrant = ["qdrant-client>=1.10"]
+# Optional second-stage reranking (MonoQwen2-VL, Apache-2.0). GPU-oriented, off by default.
+rerank = ["transformers>=4.45", "peft>=0.13", "accelerate>=0.34"]
 dev = ["pytest>=8", "pytest-cov", "httpx>=0.27", "reportlab>=4"]
 
 [project.scripts]

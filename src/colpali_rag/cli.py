@@ -54,18 +54,49 @@ def index(
 def query(
     text: str = typer.Argument(..., help="Search query"),
     k: int = typer.Option(8, help="How many pages to show"),
+    rerank: bool = typer.Option(False, "--rerank", help="apply the configured reranker (needs [rerank] + RERANK_ENABLED)"),
     model: Optional[str] = typer.Option(None), device: Optional[str] = typer.Option(None),
     store: Optional[str] = typer.Option(None), data_dir: Optional[str] = typer.Option(None),
     collection: Optional[str] = typer.Option(None), qdrant_url: Optional[str] = typer.Option(None),
 ):
     """Search an existing index from the terminal."""
-    from colpali_rag.engine import open_index
+    from colpali_rag.engine import open_index, retrieve
+    from colpali_rag.rerank import get_reranker
 
     s = _apply_overrides(get_settings(), model, device, store, data_dir, collection, qdrant_url)
     store_obj, _emb = open_index(s)
+    reranker = get_reranker(s) if rerank else None
     typer.echo(f"Top {k} pages for {text!r}:")
-    for rec, score, pid in store_obj.search(text, top_k=k):
+    for rec, score, pid in retrieve(store_obj, text, k, reranker=reranker):
         typer.echo(f"  {score:9.4f}  {rec.doc}  p{rec.page}")
+
+
+@app.command("eval")
+def eval_cmd(
+    eval_file: Path = typer.Argument(..., help='eval.jsonl lines: {"query": ..., "gold_page_ids": ["doc::p3", ...]}'),
+    k: str = typer.Option("1,5,10", help="cutoffs, comma-separated"),
+    rerank: bool = typer.Option(False, "--rerank", help="A/B: measure with the configured reranker on"),
+    report: Optional[str] = typer.Option(None, help="write the full JSON report here"),
+    model: Optional[str] = typer.Option(None), device: Optional[str] = typer.Option(None),
+    store: Optional[str] = typer.Option(None), data_dir: Optional[str] = typer.Option(None),
+):
+    """Measure retrieval accuracy (recall@k / nDCG@k / MRR) on a labeled query set."""
+    import json as _json
+
+    from colpali_rag.engine import open_index, retrieve
+    from colpali_rag.eval import format_report, load_eval, run_eval
+    from colpali_rag.rerank import get_reranker
+
+    s = _apply_overrides(get_settings(), model, device, store, data_dir, None, None)
+    store_obj, _emb = open_index(s)
+    reranker = get_reranker(s) if rerank else None
+    cases = load_eval(eval_file)
+    ks = tuple(int(x) for x in k.split(","))
+    rep = run_eval(cases, lambda query, tk: retrieve(store_obj, query, tk, reranker=reranker), ks=ks)
+    typer.echo(format_report(rep))
+    if report:
+        Path(report).write_text(_json.dumps(rep, indent=2))
+        typer.secho(f"\nwrote {report}", fg="green")
 
 
 @app.command()

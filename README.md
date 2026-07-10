@@ -153,11 +153,14 @@ src/colpali_rag/
 
 ## Documentation
 
-- [docs/HANDOFF.md](docs/HANDOFF.md) — start here
-- [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) — pipeline, module map, data contracts
+- **[docs/PIPELINE.md](docs/PIPELINE.md) — the single end-to-end reference: every stage
+  and how to connect every piece (models, Qdrant, reranker, answer endpoint).**
+- [docs/HANDOFF.md](docs/HANDOFF.md) — start here / repo map
 - [docs/COLPALI.md](docs/COLPALI.md) — late interaction / MaxSim, models + licensing, the heatmap
 - [docs/SCALING.md](docs/SCALING.md) — in-memory vs Qdrant + the multivector scaling recipe
 - [docs/EXTENDING.md](docs/EXTENDING.md) — roadmap to a top-tier system, mapped to files & prompts
+
+Measure retrieval accuracy on a labeled set: `colpali-rag eval eval.jsonl --k 1,5,10 [--rerank]`.
 
 ## Requirements
 

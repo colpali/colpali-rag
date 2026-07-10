@@ -29,11 +29,14 @@ def answer(
     base_url: str,
     api_key: str | None = None,
     model: str = "vlm",
+    labels: list[str] | None = None,
     max_tokens: int = 800,
     timeout: float = 90.0,
 ) -> str:
     """POST the question + page images to an OpenAI-compatible vision endpoint and
-    return the text answer. Raises on HTTP/transport error (callers handle it)."""
+    return the text answer. Each image is preceded by its `labels[i]` (e.g. "Page 3 of
+    report.pdf:") so the model can cite pages *verifiably* — without labels it cannot
+    know which image is which page. Raises on HTTP/transport error (callers handle it)."""
     import httpx
 
     content = [
@@ -41,12 +44,15 @@ def answer(
             "type": "text",
             "text": (
                 "Answer the question using ONLY the attached document page image(s). "
-                "Cite the page number(s) you relied on. If the pages do not contain "
-                f"the answer, say so plainly.\n\nQuestion: {question}"
+                "Each image is labelled with its source page; cite the exact page(s) you "
+                "relied on. If the pages do not contain the answer, say so plainly."
+                f"\n\nQuestion: {question}"
             ),
         }
     ]
-    for img in images:
+    for i, img in enumerate(images):
+        if labels and i < len(labels):
+            content.append({"type": "text", "text": labels[i]})
         content.append({"type": "image_url", "image_url": {"url": _image_data_uri(img)}})
 
     payload = {

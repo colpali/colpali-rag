@@ -24,6 +24,7 @@ from pathlib import Path
 from colpali_rag.pdf import Page
 
 _SAFE = re.compile(r"[^A-Za-z0-9._-]+")
+SCHEMA_VERSION = 1
 
 
 def page_id(doc: str, page: int) -> str:
@@ -32,6 +33,44 @@ def page_id(doc: str, page: int) -> str:
 
 def _safe(name: str) -> str:
     return _SAFE.sub("_", name)
+
+
+def _emb_dim(embs) -> int | None:
+    """Best-effort embedding dim from the first page's multivector (for the identity
+    guard). Robust to tensors, 2D list-of-lists, 1D vectors, and scalar test fakes."""
+    if not embs:
+        return None
+    e0 = embs[0]
+    try:
+        return int(e0.shape[-1])         # tensor / ndarray (seq, dim)
+    except AttributeError:
+        pass
+    try:
+        return len(e0[0])                # 2D list-of-lists (seq, dim)
+    except (TypeError, IndexError, KeyError):
+        pass
+    try:
+        return len(e0)                   # 1D vector
+    except TypeError:
+        return None
+
+
+def check_identity(meta: dict, embedder) -> None:
+    """Guard: refuse to query an index built with a different model (whose page
+    vectors are meaningless against another model's query vectors)."""
+    from colpali_rag.errors import IndexModelMismatch
+
+    built = meta.get("model")
+    if built and built != embedder.model_id:
+        raise IndexModelMismatch(
+            f"index was built with model {built!r} but COLPALI_MODEL is {embedder.model_id!r}. "
+            f"Scores would be meaningless. Re-index, or set COLPALI_MODEL={built}."
+        )
+    sv = meta.get("schema_version")
+    if sv is not None and sv != SCHEMA_VERSION:
+        raise IndexModelMismatch(
+            f"index schema v{sv} != current v{SCHEMA_VERSION}. Re-index: colpali-rag index <dir>."
+        )
 
 
 class _Base:
@@ -83,7 +122,8 @@ class MemoryStore(_Base):
         torch.save(self._embs, self.data_dir / "embeddings.pt")
         (self.data_dir / "records.json").write_text(
             json.dumps({"records": [asdict(r) for r in self.records], "ids": self.ids,
-                        "model": self.embedder.model_id, "backend": "memory"}, indent=2)
+                        "model": self.embedder.model_id, "dim": _emb_dim(self._embs),
+                        "schema_version": SCHEMA_VERSION, "backend": "memory"}, indent=2)
         )
 
     @classmethod
@@ -92,6 +132,7 @@ class MemoryStore(_Base):
 
         d = Path(data_dir)
         meta = json.loads((d / "records.json").read_text())
+        check_identity(meta, embedder)
         store = cls(embedder, data_dir)
         store.records = [Page(**r) for r in meta["records"]]
         store.ids = meta["ids"]
@@ -139,7 +180,8 @@ class QdrantStore(_Base):
         self.data_dir.mkdir(parents=True, exist_ok=True)
         (self.data_dir / "records.json").write_text(
             json.dumps({"records": [asdict(r) for r in self.records], "ids": self.ids,
-                        "model": self.embedder.model_id, "backend": "qdrant",
+                        "model": self.embedder.model_id, "dim": dim,
+                        "schema_version": SCHEMA_VERSION, "backend": "qdrant",
                         "collection": self.collection}, indent=2)
         )
         return self
@@ -179,6 +221,7 @@ def load_store(settings, embedder):
         rec_path = Path(settings.data_dir) / "records.json"
         if rec_path.exists():
             meta = json.loads(rec_path.read_text())
+            check_identity(meta, embedder)
             store.records = [Page(**r) for r in meta["records"]]
             store.ids = meta["ids"]
         return store

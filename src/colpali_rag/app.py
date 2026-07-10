@@ -20,7 +20,9 @@ from fastapi.responses import HTMLResponse, Response
 
 from colpali_rag import heatmap as H
 from colpali_rag.config import get_settings
-from colpali_rag.engine import open_index
+from colpali_rag.engine import open_index, retrieve
+from colpali_rag.errors import HeatmapUnsupported
+from colpali_rag.rerank import get_reranker
 
 _STATE: dict = {"store": None, "embedder": None, "info": None, "error": None}
 _LOCK = threading.Lock()  # serialize model forwards (CPU model isn't re-entrant)
@@ -33,9 +35,16 @@ async def lifespan(app: FastAPI):
     try:
         store, emb = open_index(s)
         _STATE["store"], _STATE["embedder"] = store, emb
+        try:
+            _STATE["reranker"] = get_reranker(s)
+        except Exception as e:  # noqa: BLE001 - reranker is optional; never block startup
+            _STATE["reranker"] = None
+            _STATE["rerank_error"] = f"{type(e).__name__}: {e}"
         _STATE["info"] = {"model": s.model, "device": s.device, "store": s.store,
                           "collection": s.collection if s.store == "qdrant" else None,
-                          "pages": len(store), "vlm": s.vlm_enabled}
+                          "pages": len(store), "vlm": s.vlm_enabled,
+                          "rerank": _STATE.get("reranker") is not None,
+                          "heatmap": getattr(emb, "heatmap_supported", True)}
     except Exception as e:  # no index yet, or load failed — UI shows a friendly hint
         _STATE["error"] = f"{type(e).__name__}: {e}"
     yield
@@ -78,7 +87,7 @@ def status():
 def search(q: str = Query(..., min_length=1), k: int = 12):
     _need_index()
     with _LOCK:
-        hits = _STATE["store"].search(q, top_k=k)
+        hits = retrieve(_STATE["store"], q, top_k=k, reranker=_STATE.get("reranker"))
     return {"query": q, "results": [
         {"page_id": pid, "doc": r.doc, "page": r.page, "score": round(sc, 3),
          "snippet": _snippet(r.text, q)}
@@ -97,28 +106,35 @@ def image(page_id: str):
 
 
 @app.get("/api/ask")
-def ask(q: str = Query(..., min_length=1), k: int = 3):
+def ask(q: str = Query(..., min_length=1), k: int | None = None):
     """Optional RAG answer: retrieve top pages, let a (vendor-neutral) vision model
-    read them and answer with citations. Disabled unless VLM_BASE_URL is set."""
+    read them (each labelled with its page, so citations are verifiable) and answer.
+    Disabled unless VLM_BASE_URL is set. Gated by answer_min_score if configured."""
     _need_index()
     s = _STATE.get("settings")
     if not s or not s.vlm_enabled:
         raise HTTPException(status_code=503,
                             detail="No answer model configured — set VLM_BASE_URL. Search still works.")
+    top_k = k or s.answer_top_k
     with _LOCK:
-        hits = _STATE["store"].search(q, top_k=k)
-    imgs, sources = [], []
+        hits = retrieve(_STATE["store"], q, top_k=top_k, reranker=_STATE.get("reranker"))
+    if s.answer_min_score is not None and (not hits or hits[0][1] < s.answer_min_score):
+        return {"question": q, "answer": "No sufficiently relevant page was found for this question.",
+                "sources": [], "gated": True}
+    imgs, labels, sources = [], [], []
     for r, sc, pid in hits:
         im = _STATE["store"].get_image(pid)
         if im is not None:
             imgs.append(im)
-            sources.append({"doc": r.doc, "page": r.page, "score": round(sc, 3)})
+            labels.append(f"Page {r.page} of {r.doc}:")
+            sources.append({"doc": r.doc, "page": r.page, "page_id": pid, "score": round(sc, 3)})
     if not imgs:
         raise HTTPException(status_code=404, detail="no pages to read")
     from colpali_rag.generator import answer as vlm_answer
 
     try:
-        text = vlm_answer(q, imgs, base_url=s.vlm_base_url, api_key=s.vlm_api_key, model=s.vlm_model)
+        text = vlm_answer(q, imgs, base_url=s.vlm_base_url, api_key=s.vlm_api_key,
+                          model=s.vlm_model, labels=labels)
     except Exception as e:  # noqa: BLE001 - surface endpoint/model failures cleanly
         raise HTTPException(status_code=502, detail=f"answer model error: {type(e).__name__}: {e}") from e
     return {"question": q, "answer": text, "sources": sources}
@@ -130,8 +146,11 @@ def heatmap(page_id: str, q: str = Query(..., min_length=1)):
     im = _STATE["store"].get_image(page_id)
     if im is None:
         raise HTTPException(status_code=404, detail="page image not found")
-    with _LOCK:
-        tokens, maps = _STATE["embedder"].similarity_maps(im, q)
+    try:
+        with _LOCK:
+            tokens, maps = _STATE["embedder"].similarity_maps(im, q)
+    except HeatmapUnsupported as e:
+        raise HTTPException(status_code=501, detail=str(e)) from e
     overlays = {"all": H.to_data_uri(H.overlay(im, np.array(maps[-1])))} if -1 in maps else {}
     for t in tokens:
         overlays[str(t["index"])] = H.to_data_uri(H.overlay(im, np.array(maps[t["index"]])))
@@ -322,7 +341,11 @@ async function openDetail(r,q){
   $('#heatimg').src=''; $('#tokens').innerHTML=''; $('#mapSpin').innerHTML='<span class="spin"></span>';
   let h; try{ h=await api('/api/heatmap?page_id='+encodeURIComponent(r.page_id)+'&q='+encodeURIComponent(q)); }
   catch(e){ $('#mapSpin').innerHTML=''; return; }
-  CUR.overlays=h.overlays; CUR.tokens=h.tokens; $('#mapSpin').innerHTML='';
+  $('#mapSpin').innerHTML='';
+  if(!h||!h.overlays||!h.tokens){
+    $('#tokens').innerHTML='<span style="color:var(--muted);font-size:.85rem">'+(h&&h.detail?h.detail:'heatmap unavailable for this model')+'</span>';
+    $('#heatimg').src=''; return; }
+  CUR.overlays=h.overlays; CUR.tokens=h.tokens;
   const chips=[{index:'all',text:'All'}].concat(h.tokens.map(t=>({index:String(t.index),text:t.text})));
   chips.forEach((t,i)=>{
     const b=document.createElement('button'); b.className='tok'+(i===0?' active':''); b.textContent=t.text;
