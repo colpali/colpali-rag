@@ -35,6 +35,12 @@ def _safe(name: str) -> str:
     return _SAFE.sub("_", name)
 
 
+def image_key(pid: str) -> str:
+    """Storage key for a page image. `images/<safe>.png` — byte-identical to the
+    pre-adapter on-disk path, so LocalArtifactStore(root=data_dir) keeps old indexes."""
+    return f"images/{_safe(pid)}.png"
+
+
 def _emb_dim(embs) -> int | None:
     """Best-effort embedding dim from the first page's multivector (for the identity
     guard). Robust to tensors, 2D list-of-lists, 1D vectors, and scalar test fakes."""
@@ -74,23 +80,30 @@ def check_identity(meta: dict, embedder) -> None:
 
 
 class _Base:
-    def __init__(self, embedder, data_dir: str):
+    def __init__(self, embedder, data_dir: str, artifacts=None):
+        from colpali_rag.artifact_store import LocalArtifactStore
+
         self.embedder = embedder
         self.data_dir = Path(data_dir)
-        self.img_dir = self.data_dir / "images"
+        self.artifacts = artifacts or LocalArtifactStore(self.data_dir)
         self.records: list[Page] = []
         self.ids: list[str] = []
 
     def _persist_images(self, records: list[Page], images: list) -> None:
-        self.img_dir.mkdir(parents=True, exist_ok=True)
+        import io
+
         for rec, im in zip(records, images):
-            im.convert("RGB").save(self.img_dir / f"{_safe(page_id(rec.doc, rec.page))}.png")
+            buf = io.BytesIO()
+            im.convert("RGB").save(buf, "PNG")
+            self.artifacts.put(image_key(page_id(rec.doc, rec.page)), buf.getvalue(), "image/png")
 
     def get_image(self, pid: str):
-        from PIL import Image
+        from colpali_rag.artifact_store import load_bytes_as_image
 
-        p = self.img_dir / f"{_safe(pid)}.png"
-        return Image.open(p) if p.exists() else None
+        return load_bytes_as_image(self.artifacts.get(image_key(pid)))
+
+    def image_url(self, pid: str, expires_in: int = 900):
+        return self.artifacts.url_for(image_key(pid), expires_in)
 
     def __len__(self) -> int:
         return len(self.records)
@@ -99,8 +112,8 @@ class _Base:
 class MemoryStore(_Base):
     backend = "memory"
 
-    def __init__(self, embedder, data_dir: str):
-        super().__init__(embedder, data_dir)
+    def __init__(self, embedder, data_dir: str, artifacts=None):
+        super().__init__(embedder, data_dir, artifacts)
         self._embs = None
 
     def build_from(self, records, images, embs):
@@ -127,13 +140,13 @@ class MemoryStore(_Base):
         )
 
     @classmethod
-    def load(cls, embedder, data_dir: str):
+    def load(cls, embedder, data_dir: str, artifacts=None):
         import torch
 
         d = Path(data_dir)
         meta = json.loads((d / "records.json").read_text())
         check_identity(meta, embedder)
-        store = cls(embedder, data_dir)
+        store = cls(embedder, data_dir, artifacts)
         store.records = [Page(**r) for r in meta["records"]]
         store.ids = meta["ids"]
         store._embs = torch.load(d / "embeddings.pt", weights_only=False)
@@ -144,8 +157,8 @@ class QdrantStore(_Base):
     backend = "qdrant"
 
     def __init__(self, embedder, data_dir: str, url: str | None = None,
-                 api_key: str | None = None, collection: str = "documents"):
-        super().__init__(embedder, data_dir)
+                 api_key: str | None = None, collection: str = "documents", artifacts=None):
+        super().__init__(embedder, data_dir, artifacts)
         from qdrant_client import QdrantClient
 
         self.collection = collection
@@ -206,17 +219,25 @@ class QdrantStore(_Base):
 
 def build_store(settings, embedder):
     """Factory from Settings.store."""
+    from colpali_rag.artifact_store import build_artifact_store
+
+    artifacts = build_artifact_store(settings)
     if settings.store == "qdrant":
         return QdrantStore(embedder, settings.data_dir, url=settings.qdrant_url,
-                           api_key=settings.qdrant_api_key, collection=settings.collection)
-    return MemoryStore(embedder, settings.data_dir)
+                           api_key=settings.qdrant_api_key, collection=settings.collection,
+                           artifacts=artifacts)
+    return MemoryStore(embedder, settings.data_dir, artifacts=artifacts)
 
 
 def load_store(settings, embedder):
     """Re-open a persisted store for serving/searching without re-indexing."""
+    from colpali_rag.artifact_store import build_artifact_store
+
+    artifacts = build_artifact_store(settings)
     if settings.store == "qdrant":
         store = QdrantStore(embedder, settings.data_dir, url=settings.qdrant_url,
-                            api_key=settings.qdrant_api_key, collection=settings.collection)
+                            api_key=settings.qdrant_api_key, collection=settings.collection,
+                            artifacts=artifacts)
         # records/ids/images already persisted; reload the record list for the UI
         rec_path = Path(settings.data_dir) / "records.json"
         if rec_path.exists():
@@ -225,4 +246,4 @@ def load_store(settings, embedder):
             store.records = [Page(**r) for r in meta["records"]]
             store.ids = meta["ids"]
         return store
-    return MemoryStore.load(embedder, settings.data_dir)
+    return MemoryStore.load(embedder, settings.data_dir, artifacts=artifacts)

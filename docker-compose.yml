@@ -14,3 +14,22 @@ services:
     volumes:
       - ./qdrant_storage:/qdrant/storage
     restart: unless-stopped
+
+  # Optional S3-compatible object storage for page images (a local stand-in for any
+  # cloud object store). Uncomment, then:
+  #   pip install -e '.[s3]'
+  #   STORAGE_BACKEND=s3 STORAGE_ENDPOINT_URL=http://localhost:9000 STORAGE_BUCKET=colpali \
+  #   STORAGE_ACCESS_KEY=minioadmin STORAGE_SECRET_KEY=minioadmin colpali-rag index ./pdfs
+  # (create the bucket once via the console at http://localhost:9001)
+  # minio:
+  #   image: minio/minio:latest
+  #   command: server /data --console-address ":9001"
+  #   environment:
+  #     MINIO_ROOT_USER: minioadmin
+  #     MINIO_ROOT_PASSWORD: minioadmin
+  #   ports:
+  #     - "9000:9000"   # S3 API
+  #     - "9001:9001"   # console
+  #   volumes:
+  #     - ./minio_storage:/data
+  #   restart: unless-stopped

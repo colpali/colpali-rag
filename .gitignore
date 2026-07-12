@@ -35,3 +35,4 @@ tests/_sample_docs/
 
 # Restored original docs — kept LOCAL, never published
 local-docs/
+minio_storage/

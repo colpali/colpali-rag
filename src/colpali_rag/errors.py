@@ -38,3 +38,12 @@ class StoreError(ColpaliRagError):
 
 class AnswerModelError(ColpaliRagError):
     """The optional answer endpoint failed or returned an unusable response."""
+
+
+class ArtifactStoreError(ColpaliRagError):
+    """Object/artifact storage failed (auth, network, config) — distinct from a
+    genuinely missing key, which returns None."""
+
+
+class FaithfulnessError(ColpaliRagError):
+    """A faithfulness-judge call failed (internal; never surfaces as an HTTP 5xx)."""

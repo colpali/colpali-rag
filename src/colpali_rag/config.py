@@ -66,6 +66,18 @@ class Settings:
     qdrant_api_key: str | None = None
     collection: str = "documents"
 
+    # --- artifact (page image) storage: local (default) | s3-compatible object storage ---
+    storage_backend: str = "local"         # local | s3
+    storage_bucket: str | None = None
+    storage_endpoint_url: str | None = None  # for S3-compatible object stores
+    storage_region: str = "auto"
+    storage_access_key: str | None = None
+    storage_secret_key: str | None = None
+    storage_prefix: str = ""
+    storage_addressing: str = "path"       # path | virtual
+    storage_url_ttl: int = 900
+    storage_serve_mode: str = "proxy"      # proxy (safe default) | presigned
+
     # --- reranking (config-gated, OFF by default; needs the [rerank] extra + a GPU) ---
     rerank_enabled: bool = False
     rerank_backend: str = "monoqwen"       # none | monoqwen  (Apache-2.0 base)
@@ -80,6 +92,17 @@ class Settings:
     vlm_model: str = "vlm"
     answer_top_k: int = 3
     answer_min_score: float | None = None  # gate: skip answering if top score below this
+    answer_structured: bool = False        # return {answer, claims:[{text,pages,confidence}]}
+    answer_structured_mode: str = "auto"   # auto | json_schema | json_object | prompt
+    answer_max_retries: int = 1
+
+    # --- faithfulness check (optional; needs a SEPARATE judge endpoint) ---
+    faithfulness_gate: str = "off"         # off | flag | withhold
+    faithfulness_min_score: float | None = None
+    judge_base_url: str | None = None
+    judge_api_key: str | None = None
+    judge_model: str = ""
+    judge_allow_same_endpoint: bool = False
 
     # --- server ---
     host: str = "127.0.0.1"
@@ -100,6 +123,16 @@ class Settings:
             qdrant_url=os.environ.get("QDRANT_URL") or None,
             qdrant_api_key=os.environ.get("QDRANT_API_KEY") or None,
             collection=_env("COLPALI_COLLECTION", cls.collection),
+            storage_backend=_env("STORAGE_BACKEND", cls.storage_backend),
+            storage_bucket=os.environ.get("STORAGE_BUCKET") or None,
+            storage_endpoint_url=os.environ.get("STORAGE_ENDPOINT_URL") or None,
+            storage_region=_env("STORAGE_REGION", cls.storage_region),
+            storage_access_key=os.environ.get("STORAGE_ACCESS_KEY") or None,
+            storage_secret_key=os.environ.get("STORAGE_SECRET_KEY") or None,
+            storage_prefix=_env("STORAGE_PREFIX", cls.storage_prefix),
+            storage_addressing=_env("STORAGE_ADDRESSING", cls.storage_addressing),
+            storage_url_ttl=_env_int("STORAGE_URL_TTL", cls.storage_url_ttl),
+            storage_serve_mode=_env("STORAGE_SERVE_MODE", cls.storage_serve_mode),
             rerank_enabled=_env_bool("RERANK_ENABLED", cls.rerank_enabled),
             rerank_backend=_env("RERANK_BACKEND", cls.rerank_backend),
             rerank_model=_env("RERANK_MODEL", cls.rerank_model),
@@ -111,6 +144,15 @@ class Settings:
             vlm_model=_env("VLM_MODEL", cls.vlm_model),
             answer_top_k=_env_int("ANSWER_TOP_K", cls.answer_top_k),
             answer_min_score=_env_float_opt("ANSWER_MIN_SCORE"),
+            answer_structured=_env_bool("ANSWER_STRUCTURED", cls.answer_structured),
+            answer_structured_mode=_env("ANSWER_STRUCTURED_MODE", cls.answer_structured_mode),
+            answer_max_retries=_env_int("ANSWER_MAX_RETRIES", cls.answer_max_retries),
+            faithfulness_gate=_env("FAITHFULNESS_GATE", cls.faithfulness_gate),
+            faithfulness_min_score=_env_float_opt("FAITHFULNESS_MIN_SCORE"),
+            judge_base_url=os.environ.get("JUDGE_BASE_URL") or None,
+            judge_api_key=os.environ.get("JUDGE_API_KEY") or None,
+            judge_model=_env("JUDGE_MODEL", cls.judge_model),
+            judge_allow_same_endpoint=_env_bool("JUDGE_ALLOW_SAME_ENDPOINT", cls.judge_allow_same_endpoint),
             host=_env("COLPALI_HOST", cls.host),
             port=_env_int("COLPALI_PORT", cls.port),
         )

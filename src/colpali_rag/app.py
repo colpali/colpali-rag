@@ -11,12 +11,15 @@ The model + index are loaded once at startup (lifespan). Endpoints:
 from __future__ import annotations
 
 import io
+import logging
 import threading
 from contextlib import asynccontextmanager
 
+_log = logging.getLogger(__name__)
+
 import numpy as np
 from fastapi import FastAPI, HTTPException, Query
-from fastapi.responses import HTMLResponse, Response
+from fastapi.responses import HTMLResponse, RedirectResponse, Response
 
 from colpali_rag import heatmap as H
 from colpali_rag.config import get_settings
@@ -97,6 +100,16 @@ def search(q: str = Query(..., min_length=1), k: int = 12):
 @app.get("/api/image")
 def image(page_id: str):
     _need_index()
+    s = _STATE.get("settings")
+    # presigned redirect only if explicitly opted in (proxy is the safe default so
+    # access control stays with the app, not a shareable URL)
+    if s and getattr(s, "storage_serve_mode", "proxy") == "presigned":
+        try:
+            url = _STATE["store"].image_url(page_id, expires_in=s.storage_url_ttl)
+        except Exception:  # noqa: BLE001 - presign failure -> fall through to proxy (never 500)
+            url = None
+        if url:
+            return RedirectResponse(url, status_code=302)
     im = _STATE["store"].get_image(page_id)
     if im is None:
         raise HTTPException(status_code=404, detail="page image not found")
@@ -130,6 +143,41 @@ def ask(q: str = Query(..., min_length=1), k: int | None = None):
             sources.append({"doc": r.doc, "page": r.page, "page_id": pid, "score": round(sc, 3)})
     if not imgs:
         raise HTTPException(status_code=404, detail="no pages to read")
+
+    if s.answer_structured:
+        from colpali_rag.faithfulness import apply_gate, judge_answer
+        from colpali_rag.generator import answer_structured
+
+        page_ids = [src["page_id"] for src in sources]
+        slabels = [f"[{i+1}] Page {src['page']} of {src['doc']}:" for i, src in enumerate(sources)]
+        try:
+            result = answer_structured(
+                q, imgs, attached_page_ids=page_ids, base_url=s.vlm_base_url,
+                api_key=s.vlm_api_key, model=s.vlm_model, labels=slabels,
+                mode=s.answer_structured_mode, max_retries=s.answer_max_retries)
+        except Exception as e:  # noqa: BLE001
+            raise HTTPException(status_code=502, detail=f"answer model error: {type(e).__name__}: {e}") from e
+        report, withheld = None, False
+        if s.faithfulness_gate != "off":
+            try:  # best-effort check: a judge/storage failure must not 500 a good answer
+                report = judge_answer(result, lambda pid: _STATE["store"].get_image(pid), s)
+                result, withheld = apply_gate(result, report, s.faithfulness_gate, s.faithfulness_min_score)
+            except Exception as e:  # noqa: BLE001
+                _log.warning("faithfulness check skipped: %s: %s", type(e).__name__, e)
+                report, withheld = None, False
+        resp = {"question": q, "answer": result.answer, "sources": sources,
+                "structured": result.structured, "mode": result.mode,
+                "claims": [{"text": c.text, "pages": c.pages, "confidence": c.confidence}
+                           for c in result.claims],
+                "hallucinated_citations": result.hallucinated_citations}
+        if report is not None:
+            resp["faithfulness"] = {
+                "score": report.faithfulness, "citation_precision": report.citation_precision,
+                "withheld": withheld,
+                "verdicts": [{"claim": v.claim_index, "verdict": v.verdict, "pages": v.pages,
+                              "why": v.why} for v in report.verdicts]}
+        return resp
+
     from colpali_rag.generator import answer as vlm_answer
 
     try:

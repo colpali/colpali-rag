@@ -157,6 +157,7 @@ src/colpali_rag/
   and how to connect every piece (models, Qdrant, reranker, answer endpoint).**
 - [docs/HANDOFF.md](docs/HANDOFF.md) — start here / repo map
 - [docs/COLPALI.md](docs/COLPALI.md) — late interaction / MaxSim, models + licensing, the heatmap
+- [docs/GROUNDING.md](docs/GROUNDING.md) — **structured cited answers + faithfulness checks + the stateless cloud pipeline** (object storage / generic LLM), and how to make answers provably grounded
 - [docs/SCALING.md](docs/SCALING.md) — in-memory vs Qdrant + the multivector scaling recipe
 - [docs/EXTENDING.md](docs/EXTENDING.md) — roadmap to a top-tier system, mapped to files & prompts
 
