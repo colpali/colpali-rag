@@ -148,8 +148,27 @@ src/colpali_rag/
   generator.py  optional, vendor-neutral answer model (any OpenAI-compatible endpoint)
   engine.py     build_index / open_index
   app.py        FastAPI service + self-contained web UI (search · heatmap · ask)
-  cli.py        colpali-rag index | query | serve | info
+  cli.py        colpali-rag index | query | serve | studio | info
+  studio/       structured, cited output layer over the index (spec, generator, api, render)
 ```
+
+## Studio (optional)
+
+An application layer on top of the engine: **select which indexed sources apply**, **upload
+your own CSV / Excel / notes**, and **describe what you want**. A model reads the retrieved
+pages and returns a **structured, cited output — typed nodes and labeled connections, each
+citing the page or row it came from** — as an interactive React canvas you can explore and
+export.
+
+```bash
+pip install -e '.[rag,api,studio]'
+colpali-rag studio                     # backend + built UI at http://127.0.0.1:8000
+cd web && npm install && npm run dev    # modern dev UI at http://localhost:5173
+```
+
+Runs in **demo mode** with zero infrastructure (structure inferred from the request text);
+index a corpus and point `VLM_BASE_URL` at any OpenAI-compatible vision endpoint to ground
+it in real pages. See **[docs/STUDIO.md](docs/STUDIO.md)**.
 
 ## Documentation
 
@@ -158,6 +177,7 @@ src/colpali_rag/
 - [docs/HANDOFF.md](docs/HANDOFF.md) — start here / repo map
 - [docs/COLPALI.md](docs/COLPALI.md) — late interaction / MaxSim, models + licensing, the heatmap
 - [docs/GROUNDING.md](docs/GROUNDING.md) — **structured cited answers + faithfulness checks + the stateless cloud pipeline** (object storage / generic LLM), and how to make answers provably grounded
+- [docs/STUDIO.md](docs/STUDIO.md) — **Studio**: chat + source selection + CSV/Excel upload → interactive, cited structured outputs (React frontend), and how to make it god-tier
 - [docs/SCALING.md](docs/SCALING.md) — in-memory vs Qdrant + the multivector scaling recipe
 - [docs/EXTENDING.md](docs/EXTENDING.md) — roadmap to a top-tier system, mapped to files & prompts
 

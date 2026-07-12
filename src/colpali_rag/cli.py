@@ -127,6 +127,35 @@ def serve(
 
 
 @app.command()
+def studio(
+    host: Optional[str] = typer.Option(None, help="Bind host (default 127.0.0.1)"),
+    port: Optional[int] = typer.Option(None, help="Bind port (default 8000)"),
+    model: Optional[str] = typer.Option(None), device: Optional[str] = typer.Option(None),
+    store: Optional[str] = typer.Option(None), data_dir: Optional[str] = typer.Option(None),
+    collection: Optional[str] = typer.Option(None), qdrant_url: Optional[str] = typer.Option(None),
+):
+    """Launch Studio: chat + source selection + CSV/Excel upload → interactive, cited
+    structured outputs over your documents. Demo mode if no index/LLM is configured."""
+    import os
+
+    import uvicorn
+
+    s = _apply_overrides(get_settings(), model, device, store, data_dir, collection, qdrant_url)
+    os.environ["COLPALI_MODEL"] = s.model
+    os.environ["COLPALI_DEVICE"] = s.device
+    os.environ["COLPALI_STORE"] = s.store
+    os.environ["COLPALI_DATA_DIR"] = s.data_dir
+    os.environ["COLPALI_COLLECTION"] = s.collection
+    if s.qdrant_url:
+        os.environ["QDRANT_URL"] = s.qdrant_url
+    h, p = host or s.host, port or s.port
+    mode = "llm" if s.vlm_enabled else "demo"
+    typer.secho(f"colpali-rag studio on http://{h}:{p}  (mode={mode}, store={s.store})", fg="magenta")
+    typer.echo("  dev UI: cd web && npm install && npm run dev   → http://localhost:5173")
+    uvicorn.run("colpali_rag.studio.server:app", host=h, port=p)
+
+
+@app.command()
 def info(
     data_dir: Optional[str] = typer.Option(None), store: Optional[str] = typer.Option(None),
 ):
