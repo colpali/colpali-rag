@@ -106,6 +106,7 @@ class Settings:
     answer_structured: bool = False        # return {answer, claims:[{text,pages,confidence}]}
     answer_structured_mode: str = "auto"   # auto | json_schema | json_object | prompt
     answer_max_retries: int = 1
+    query_rewrite: bool = False             # rewrite a follow-up into a standalone retrieval query
 
     # --- faithfulness check (optional; needs a SEPARATE judge endpoint) ---
     faithfulness_gate: str = "off"         # off | flag | withhold
@@ -195,6 +196,7 @@ class Settings:
             answer_structured=_env_bool("ANSWER_STRUCTURED", cls.answer_structured),
             answer_structured_mode=_env("ANSWER_STRUCTURED_MODE", cls.answer_structured_mode),
             answer_max_retries=_env_int("ANSWER_MAX_RETRIES", cls.answer_max_retries),
+            query_rewrite=_env_bool("COLPALI_QUERY_REWRITE", cls.query_rewrite),
             faithfulness_gate=_env("FAITHFULNESS_GATE", cls.faithfulness_gate),
             faithfulness_min_score=_env_float_opt("FAITHFULNESS_MIN_SCORE"),
             judge_base_url=os.environ.get("JUDGE_BASE_URL") or None,

@@ -390,7 +390,7 @@ def _finish(request, spec, sources, settings):
 
 # --------------------------------------------------------------------------- entry
 def generate_diagram(request, *, store, settings, selected_docs=None, tables=None,
-                     notes=None, reranker=None, lock=None, top_k=6):
+                     notes=None, reranker=None, lock=None, top_k=6, history=None):
     """Produce (DiagramSpec, sources). Uses the LLM when configured, else the demo
     generator. Never raises on a model/parse failure — always returns a diagram.
 
@@ -403,8 +403,22 @@ def generate_diagram(request, *, store, settings, selected_docs=None, tables=Non
 
     log.info("generate: request=%r selected=%s top_k=%s", (request or "")[:120],
              sorted(selected_docs) if selected_docs else "(all)", top_k)
+
+    # optional: rewrite a context-dependent follow-up into a standalone RETRIEVAL query using the
+    # session history (the original request still drives generation). Off unless COLPALI_QUERY_REWRITE.
+    retrieval_query = request
+    if (getattr(settings, "query_rewrite", False) and history
+            and getattr(settings, "vlm_enabled", False)):
+        from colpali_rag.generator import rewrite_query
+        retrieval_query = rewrite_query(history, request,
+                                        base_url=getattr(settings, "vlm_base_url", None),
+                                        api_key=getattr(settings, "vlm_api_key", None),
+                                        model=getattr(settings, "vlm_model", ""))
+        if retrieval_query != request:
+            log.info("generate: rewrote retrieval query -> %r", retrieval_query[:120])
+
     sources, page_images = collect_sources(
-        request, store=store, selected_docs=selected_docs, tables=tables, notes=notes,
+        retrieval_query, store=store, selected_docs=selected_docs, tables=tables, notes=notes,
         top_k=top_k, reranker=reranker, lock=lock, settings=settings)
     n_pg = sum(1 for s in sources if s.get("kind") == "page")
     n_tb = sum(1 for s in sources if s.get("kind") == "table")

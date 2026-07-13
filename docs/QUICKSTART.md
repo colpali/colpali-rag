@@ -77,6 +77,7 @@ an index, call `retrieve`, use the returned page images/text in your own generat
 |---|---|---|
 | Exact IDs/codes found even on blurry pages | `COLPALI_HYBRID_ENABLED=true` | [RETRIEVAL.md](RETRIEVAL.md) |
 | Structured outputs limited to a controlled vocabulary from an uploaded table | `CATALOG_ID_COL=<col>` + `COLPALI_CATALOG_GATE=flag\|withhold` | [CONSTRAINTS.md](CONSTRAINTS.md) |
+| Follow-up questions retrieve well (rewrite "and the current?" into a standalone query) | `COLPALI_QUERY_REWRITE=true` | uses session history + your model |
 | Scale past the in-process store | `COLPALI_STORE=qdrant` + `QDRANT_URL=...` | [SCALING.md](SCALING.md) |
 | Page images on S3-compatible object storage | `STORAGE_BACKEND=s3` + `STORAGE_*` | [GROUNDING.md](GROUNDING.md) |
 

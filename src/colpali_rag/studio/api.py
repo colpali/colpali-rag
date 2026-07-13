@@ -123,7 +123,8 @@ def generate(session_id: str = Form(...), message: str = Form(...),
         message, store=_store(), settings=s,
         selected_docs=sess.selected_docs or None,
         tables=sess.tables, notes=sess.notes,
-        reranker=CTX.get("reranker"), lock=CTX.get("lock"), top_k=max(1, min(top_k, 12)))
+        reranker=CTX.get("reranker"), lock=CTX.get("lock"), top_k=max(1, min(top_k, 12)),
+        history=[t.request for t in sess.history])
     sess.last_spec = spec
     sess.last_sources = srcs
     from colpali_rag.studio.generate import build_run_summary

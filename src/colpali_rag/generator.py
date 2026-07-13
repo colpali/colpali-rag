@@ -44,6 +44,29 @@ def _post_chat(base_url, api_key, model, messages, *, response_format=None,
     return resp.json()
 
 
+def rewrite_query(history, query, *, base_url, api_key=None, model="", timeout=30.0) -> str:
+    """Turn a context-dependent follow-up into a self-contained retrieval query using the earlier
+    requests in a session — so "and the current rating?" retrieves as well as the full question
+    would. Text-only (no images). Returns the original query unchanged on empty history or any
+    failure: a rewrite hiccup must never block retrieval."""
+    prior = [str(h).strip() for h in (history or []) if str(h).strip()]
+    if not prior or not str(query).strip():
+        return query
+    convo = "\n".join(f"- {h}" for h in prior[-6:])
+    prompt = ("Rewrite the user's NEW request as a single self-contained request that captures "
+              "what they want now, resolving any pronouns or omissions using the earlier requests. "
+              "Return ONLY the rewritten request — no preamble, no quotes.\n\n"
+              f"Earlier requests:\n{convo}\n\nNew request: {query}\n\nStandalone request:")
+    try:
+        data = _post_chat(base_url, api_key, model,
+                          [{"role": "user", "content": [{"type": "text", "text": prompt}]}],
+                          max_tokens=200, timeout=timeout)
+        out = (data["choices"][0]["message"].get("content") or "").strip().strip('"').strip()
+        return out or query
+    except Exception:  # noqa: BLE001 - never fail retrieval on a rewrite error
+        return query
+
+
 def answer(
     question: str,
     images: list,
