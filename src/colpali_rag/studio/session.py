@@ -45,11 +45,14 @@ class Session:
         """Ingest an uploaded file into the session. Returns a short human status."""
         low = name.lower()
         if low.endswith((".csv", ".tsv", ".xlsx", ".xlsm", ".xls")):
-            from colpali_rag.studio.tabular import load_table
+            from colpali_rag.studio.tabular import load_tables
 
-            t = load_table(name, data)
-            self.tables = [x for x in self.tables if x.name != name] + [t]
-            return f"{name}: {t.total_rows} row(s), {len(t.columns)} column(s)"
+            ts = load_tables(name, data)              # every sheet of a workbook, not just one
+            self.tables = [x for x in self.tables if x.name != name] + ts
+            total = sum(t.total_rows for t in ts)
+            cols = max((len(t.columns) for t in ts), default=0)
+            extra = f", {len(ts)} sheet(s)" if len(ts) > 1 else ""
+            return f"{name}: {total} row(s), {cols} column(s){extra}"
         # everything else -> a text note (markdown, txt, or unknown)
         text = data.decode("utf-8", errors="replace")
         self.notes = [x for x in self.notes if x.name != name] + [Note(name, text)]

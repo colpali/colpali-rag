@@ -18,6 +18,15 @@ top pages and answers with citations.
 - **Self-contained.** Pure-Python web UI — no Node build, no CDN.
 - **Vendor-neutral answers.** The optional answer model is *any* OpenAI-compatible
   endpoint you point it at — no provider lock-in.
+- **Hybrid retrieval (optional).** Fuse the visual ranking with a keyword ranking over
+  extracted page text (RRF) so exact identifiers aren't lost to a blurry page — auto-off
+  on scanned corpora. See [docs/RETRIEVAL.md](docs/RETRIEVAL.md).
+- **Constrained structured outputs (optional).** Constrain the studio's node/connection
+  outputs to a closed vocabulary compiled from an uploaded table: every node projected
+  onto it, connections and required items verified, the model re-prompted to fix
+  violations, or the output withheld. See [docs/CONSTRAINTS.md](docs/CONSTRAINTS.md).
+- **Measured, not vibed.** A retrieval + structured-output eval harness with coverage@k /
+  recall@100 / MAP / graded nDCG and a paired-bootstrap A/B. See [docs/EVAL.md](docs/EVAL.md).
 
 ---
 
@@ -93,6 +102,8 @@ endpoint freely.
 | Qdrant URL | `QDRANT_URL` | *(embedded on-disk)* | Set to `http://localhost:6333` for a server. |
 | Collection | `COLPALI_COLLECTION` | `documents` | Qdrant collection name. |
 | Answer model | `VLM_BASE_URL` / `VLM_MODEL` / `VLM_API_KEY` | *(off)* | Any OpenAI-compatible vision endpoint. |
+| Hybrid retrieval | `COLPALI_HYBRID_ENABLED` | `false` | Fuse lexical + visual (RRF). [docs/RETRIEVAL.md](docs/RETRIEVAL.md). |
+| Vocabulary constraint | `CATALOG_ID_COL` / `COLPALI_CATALOG_GATE` | *(off)* | Constrain studio outputs to an uploaded table. [docs/CONSTRAINTS.md](docs/CONSTRAINTS.md). |
 | Host / Port | `COLPALI_HOST` / `COLPALI_PORT` | `127.0.0.1` / `8000` | Web UI bind. |
 
 Every flag mirrors an env var, e.g. `colpali-rag index ./pdfs --model vidore/colqwen2-v1.0 --device cuda`.
@@ -146,10 +157,14 @@ src/colpali_rag/
   heatmap.py    similarity grid → aligned inferno overlay (NumPy + Pillow)
   store.py      MemoryStore (brute-force) + QdrantStore (native MAX_SIM)
   generator.py  optional, vendor-neutral answer model (any OpenAI-compatible endpoint)
-  engine.py     build_index / open_index
+  engine.py     build_index / open_index / retrieve (+ optional hybrid RRF fusion)
+  lexical.py    char-n-gram BM25 over page text (the lexical channel for hybrid retrieval)
+  eval.py       retrieval metrics (coverage@k, recall@100, MAP, nDCG) + paired-bootstrap A/B
+  graph_eval.py structured-output metrics (vocabulary adherence, required coverage)
   app.py        FastAPI service + self-contained web UI (search · heatmap · ask)
-  cli.py        colpali-rag index | query | serve | studio | info
-  studio/       structured, cited output layer over the index (spec, generator, api, render)
+  cli.py        colpali-rag index | query | serve | studio | info | eval
+  studio/       structured, cited output layer over the index (spec, generate, api, render)
+    catalog.py  closed-vocabulary compiler + matcher + projection/verify/repair
 ```
 
 ## Studio (optional)
@@ -178,10 +193,15 @@ it in real pages. See **[docs/STUDIO.md](docs/STUDIO.md)**.
 - [docs/COLPALI.md](docs/COLPALI.md) — late interaction / MaxSim, models + licensing, the heatmap
 - [docs/GROUNDING.md](docs/GROUNDING.md) — **structured cited answers + faithfulness checks + the stateless cloud pipeline** (object storage / generic LLM), and how to make answers provably grounded
 - [docs/STUDIO.md](docs/STUDIO.md) — **Studio**: chat + source selection + CSV/Excel upload → interactive, cited structured outputs (React frontend), and how to make it god-tier
+- [docs/CONSTRAINTS.md](docs/CONSTRAINTS.md) — **closed-vocabulary constraints**: force studio outputs to use only entities from an uploaded table (project, verify, repair, or abstain)
+- [docs/RETRIEVAL.md](docs/RETRIEVAL.md) — **hybrid visual + lexical retrieval** (RRF over page text) for exact identifiers
+- [docs/EVAL.md](docs/EVAL.md) — **measuring accuracy**: retrieval + structured-output metrics and a paired-bootstrap A/B
 - [docs/SCALING.md](docs/SCALING.md) — in-memory vs Qdrant + the multivector scaling recipe
 - [docs/EXTENDING.md](docs/EXTENDING.md) — roadmap to a top-tier system, mapped to files & prompts
 
-Measure retrieval accuracy on a labeled set: `colpali-rag eval eval.jsonl --k 1,5,10 [--rerank]`.
+Measure retrieval accuracy on a labeled set: `colpali-rag eval eval.jsonl --k 1,5,10 [--rerank]`
+(reports coverage@k / recall@100 / MAP / graded nDCG; A/B two runs with `compare_runs` — see
+[docs/EVAL.md](docs/EVAL.md)).
 
 ## Requirements
 

@@ -110,6 +110,13 @@ class DiagramSpec:
     mode: str = "prompt"             # which cascade tier produced it, or "demo"
     hallucinated_citations: list[int] = field(default_factory=list)
     dropped_connections: int = 0     # edges referencing unknown blocks (removed)
+    hallucinated_parts: list[str] = field(default_factory=list)   # node labels not in the catalog (dropped)
+    remapped_parts: list[dict] = field(default_factory=list)      # {from,to,score,block} catalog rewrites
+    dropped_blocks: int = 0          # nodes removed because they weren't in the catalog
+    infeasible_connections: int = 0  # edges flagged: the two catalog items may not connect
+    missing_required: list[str] = field(default_factory=list)     # required catalog ids absent from the output
+    repair_attempts: int = 0         # how many times the model was re-prompted to fix violations
+    withheld: bool = False           # True => abstained: output couldn't be grounded to the catalog
     errors: list[str] = field(default_factory=list)
 
     def to_dict(self, sources: list | None = None) -> dict:
@@ -130,6 +137,13 @@ class DiagramSpec:
             "mode": self.mode,
             "hallucinated_citations": self.hallucinated_citations,
             "dropped_connections": self.dropped_connections,
+            "hallucinated_parts": self.hallucinated_parts,
+            "remapped_parts": self.remapped_parts,
+            "dropped_blocks": self.dropped_blocks,
+            "infeasible_connections": self.infeasible_connections,
+            "missing_required": self.missing_required,
+            "repair_attempts": self.repair_attempts,
+            "withheld": self.withheld,
         }
 
 
@@ -163,10 +177,17 @@ def _coerce_cites(raw, n: int, hallucinated: list[int], source_ids: list[str]) -
     return out
 
 
-def validate_diagram_obj(obj, sources: list, *, mode: str = "prompt") -> DiagramSpec:
+def validate_diagram_obj(obj, sources: list, *, mode: str = "prompt",
+                         catalog=None, feasibility=None) -> DiagramSpec:
     """Validate a parsed diagram object and resolve citations against `sources`
     (each a dict with an "id"). Raises ValueError on an unusable shape so the caller
-    can retry or fall back. Tolerant of missing/extra fields the way real models emit."""
+    can retry or fall back. Tolerant of missing/extra fields the way real models emit.
+
+    `catalog` is an optional forward-compat seam: when a compiled closed vocabulary is
+    passed, the validated spec is projected onto it (colpali_rag.studio.catalog.apply_catalog).
+    Studio normally projects at the generate_diagram choke point instead (so the demo path is
+    gated too), leaving this None. `feasibility` reserves a seam for connection-feasibility
+    rules and is currently unused. With no catalog this behaves exactly as before."""
     if not isinstance(obj, dict):
         raise ValueError("diagram is not an object")
     source_ids = [s["id"] for s in sources]
@@ -223,7 +244,7 @@ def validate_diagram_obj(obj, sources: list, *, mode: str = "prompt") -> Diagram
                                        kind=kind,
                                        cites=_coerce_cites(c.get("cites"), n, hallucinated, source_ids)))
 
-    return DiagramSpec(
+    spec = DiagramSpec(
         title=str(obj.get("title", "Untitled diagram")),
         blocks=blocks, connections=connections, groups=groups,
         reasoning=str(obj.get("reasoning", "")),
@@ -232,6 +253,10 @@ def validate_diagram_obj(obj, sources: list, *, mode: str = "prompt") -> Diagram
         hallucinated_citations=sorted(set(hallucinated)),
         dropped_connections=dropped,
     )
+    if catalog is not None:
+        from colpali_rag.studio.catalog import apply_catalog  # local import: no import cycle
+        spec = apply_catalog(spec, catalog)
+    return spec
 
 
 def parse_diagram(text: str):

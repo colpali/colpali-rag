@@ -69,6 +69,17 @@ documents, whose gaps are visible.**
 
 ---
 
+## Constrain outputs to a vocabulary (optional)
+
+By default a node can be labeled anything. When the output must only use entities from a
+source-of-truth table you upload (a product list, a component registry, an inventory — anything
+with an id column), turn on the **closed-vocabulary constraint**: every node is projected onto the
+compiled vocabulary (confident match → canonical id, otherwise dropped and flagged), connections
+and required items are verified, the model is re-prompted with the specific violations, and the
+output is emitted-with-flags or **withheld** if it still can't be grounded. Off by default; set
+`CATALOG_ID_COL` + `COLPALI_CATALOG_GATE` to enable. Full details, config, and metrics in
+**[CONSTRAINTS.md](CONSTRAINTS.md)**.
+
 ## Run it
 
 ```bash

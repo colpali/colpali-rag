@@ -234,6 +234,18 @@ def test_config_new_fields(monkeypatch):
     assert s.answer_min_score == 12.5 and s.family == "qwen2"
 
 
+def test_load_dotenv_strips_inline_comments(tmp_path, monkeypatch):
+    import os
+
+    from colpali_rag.config import load_dotenv
+
+    monkeypatch.setattr(os, "environ", {})               # isolated env; no leak into other tests
+    (tmp_path / ".env").write_text("COLPALI_DEVICE=cpu   # cpu | cuda | mps\nVLM_MODEL=my#model\n")
+    load_dotenv(tmp_path / ".env")
+    assert os.environ["COLPALI_DEVICE"] == "cpu"          # inline comment stripped
+    assert os.environ["VLM_MODEL"] == "my#model"          # '#' without leading space is literal
+
+
 def test_config_bad_int_raises(monkeypatch):
     from colpali_rag.config import Settings
 

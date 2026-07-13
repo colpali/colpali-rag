@@ -90,7 +90,8 @@ def status():
 def search(q: str = Query(..., min_length=1), k: int = 12):
     _need_index()
     with _LOCK:
-        hits = retrieve(_STATE["store"], q, top_k=k, reranker=_STATE.get("reranker"))
+        hits = retrieve(_STATE["store"], q, top_k=k, reranker=_STATE.get("reranker"),
+                        settings=_STATE.get("settings"))
     return {"query": q, "results": [
         {"page_id": pid, "doc": r.doc, "page": r.page, "score": round(sc, 3),
          "snippet": _snippet(r.text, q)}
@@ -130,7 +131,7 @@ def ask(q: str = Query(..., min_length=1), k: int | None = None):
                             detail="No answer model configured — set VLM_BASE_URL. Search still works.")
     top_k = k or s.answer_top_k
     with _LOCK:
-        hits = retrieve(_STATE["store"], q, top_k=top_k, reranker=_STATE.get("reranker"))
+        hits = retrieve(_STATE["store"], q, top_k=top_k, reranker=_STATE.get("reranker"), settings=s)
     if s.answer_min_score is not None and (not hits or hits[0][1] < s.answer_min_score):
         return {"question": q, "answer": "No sufficiently relevant page was found for this question.",
                 "sources": [], "gated": True}

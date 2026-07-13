@@ -44,6 +44,13 @@ def load_dotenv(path: str | os.PathLike | None = None) -> None:
         if not line or line.startswith("#") or "=" not in line:
             continue
         k, v = line.split("=", 1)
+        v = v.strip()
+        if v[:1] not in ("'", '"'):
+            # unquoted value: drop an inline comment introduced by whitespace + '#', so
+            # `KEY=value   # note` parses to `value` (and `KEY=a#b` keeps the literal '#').
+            for sep in (" #", "\t#"):
+                if sep in v:
+                    v = v.split(sep, 1)[0].rstrip()
         os.environ.setdefault(k.strip(), v.strip().strip('"').strip("'"))
 
 
@@ -104,6 +111,35 @@ class Settings:
     judge_model: str = ""
     judge_allow_same_endpoint: bool = False
 
+    # --- closed-vocabulary constraint for structured outputs (optional; OFF by default) ---
+    # When an uploaded table carries the configured id column, its rows are compiled into a
+    # closed vocabulary and every proposed node is projected onto it. All names/values are
+    # injected at runtime — nothing here hard-codes a schema. Empty id column => feature off.
+    catalog_gate: str = "off"              # off | flag | withhold
+    catalog_id_col: str = ""               # header of the id column; empty => constraint OFF
+    catalog_name_cols: str = ""            # comma-separated alias/label columns (match-only)
+    catalog_required_col: str = ""         # column marking rows that must appear (=> Req)
+    catalog_iface_cols: str = ""           # seam for edge feasibility (parsed, unused for now)
+    catalog_match_threshold: float = 0.84  # accept a fuzzy match at/above this similarity
+    catalog_match_margin: float = 0.08     # ...only if it beats the runner-up by this much
+    catalog_withhold_max_drop: float = 0.5 # withhold if this fraction (or more) of nodes drop
+    catalog_repair_max: int = 1            # times to re-prompt the model to fix catalog violations
+
+    # --- tabular display caps (constraint channel is never capped; these bound the LLM view) ---
+    tabular_max_preview_rows: int = 40
+    tabular_max_cols: int = 24
+    tabular_max_cell: int = 80
+
+    # --- hybrid visual + lexical retrieval (optional; OFF by default) ---
+    # Fuse the visual MaxSim ranking with a keyword ranking over extracted page text (RRF), so
+    # exact identifiers aren't lost to a blurred page. Degrades to visual-only on scanned corpora.
+    hybrid_enabled: bool = False
+    hybrid_kappa: int = 60                  # RRF constant
+    hybrid_fetch: int = 100                 # candidates pulled from each channel before fusion
+    hybrid_min_coverage: float = 0.5        # skip the lexical channel if fewer pages have text
+    hybrid_ngram_min: int = 3
+    hybrid_ngram_max: int = 5
+
     # --- server ---
     host: str = "127.0.0.1"
     port: int = 8000
@@ -153,6 +189,24 @@ class Settings:
             judge_api_key=os.environ.get("JUDGE_API_KEY") or None,
             judge_model=_env("JUDGE_MODEL", cls.judge_model),
             judge_allow_same_endpoint=_env_bool("JUDGE_ALLOW_SAME_ENDPOINT", cls.judge_allow_same_endpoint),
+            catalog_gate=_env("COLPALI_CATALOG_GATE", cls.catalog_gate),
+            catalog_id_col=_env("CATALOG_ID_COL", cls.catalog_id_col),
+            catalog_name_cols=_env("CATALOG_NAME_COLS", cls.catalog_name_cols),
+            catalog_required_col=_env("CATALOG_REQUIRED_COL", cls.catalog_required_col),
+            catalog_iface_cols=_env("CATALOG_IFACE_COLS", cls.catalog_iface_cols),
+            catalog_match_threshold=float(_env("CATALOG_MATCH_THRESHOLD", str(cls.catalog_match_threshold))),
+            catalog_match_margin=float(_env("CATALOG_MATCH_MARGIN", str(cls.catalog_match_margin))),
+            catalog_withhold_max_drop=float(_env("CATALOG_WITHHOLD_MAX_DROP", str(cls.catalog_withhold_max_drop))),
+            catalog_repair_max=_env_int("CATALOG_REPAIR_MAX", cls.catalog_repair_max),
+            tabular_max_preview_rows=_env_int("TABULAR_MAX_PREVIEW_ROWS", cls.tabular_max_preview_rows),
+            tabular_max_cols=_env_int("TABULAR_MAX_COLS", cls.tabular_max_cols),
+            tabular_max_cell=_env_int("TABULAR_MAX_CELL", cls.tabular_max_cell),
+            hybrid_enabled=_env_bool("COLPALI_HYBRID_ENABLED", cls.hybrid_enabled),
+            hybrid_kappa=_env_int("COLPALI_HYBRID_KAPPA", cls.hybrid_kappa),
+            hybrid_fetch=_env_int("COLPALI_HYBRID_FETCH", cls.hybrid_fetch),
+            hybrid_min_coverage=float(_env("COLPALI_HYBRID_MIN_COVERAGE", str(cls.hybrid_min_coverage))),
+            hybrid_ngram_min=_env_int("COLPALI_HYBRID_NGRAM_MIN", cls.hybrid_ngram_min),
+            hybrid_ngram_max=_env_int("COLPALI_HYBRID_NGRAM_MAX", cls.hybrid_ngram_max),
             host=_env("COLPALI_HOST", cls.host),
             port=_env_int("COLPALI_PORT", cls.port),
         )

@@ -37,10 +37,16 @@ _TIERS = ["json_schema", "json_object", "prompt"]
 
 # --------------------------------------------------------------------------- sources
 def collect_sources(request, *, store, selected_docs=None, tables=None, notes=None,
-                    top_k=6, reranker=None, lock=None):
+                    top_k=6, reranker=None, lock=None, settings=None):
     """Build the ordered source list (+ the page images to send). Returns
     (sources, page_images) where sources[i] has a stable 1-based cite index i+1."""
     from colpali_rag.engine import retrieve   # lazy: keeps torch out of the demo/import path
+
+    caps = {}
+    if settings is not None:
+        caps = {"max_rows": getattr(settings, "tabular_max_preview_rows", 40),
+                "max_cols": getattr(settings, "tabular_max_cols", 24),
+                "max_cell": getattr(settings, "tabular_max_cell", 80)}
 
     sources: list[dict] = []
     page_images: list = []
@@ -52,7 +58,7 @@ def collect_sources(request, *, store, selected_docs=None, tables=None, notes=No
         _release = lock.release if lock else (lambda: None)
         _acquire()
         try:
-            hits = retrieve(store, request, top_k=fetch, reranker=reranker)
+            hits = retrieve(store, request, top_k=fetch, reranker=reranker, settings=settings)
         finally:
             _release()
         for r, sc, pid in hits:
@@ -70,7 +76,7 @@ def collect_sources(request, *, store, selected_docs=None, tables=None, notes=No
 
     for t in tables or []:
         sources.append({"id": f"t{len(sources)+1}", "kind": "table", "ref": t.name,
-                        "label": t.name, "text": t.summary()})
+                        "label": t.name, "text": t.summary(**caps)})
     for nt in notes or []:
         sources.append({"id": f"n{len(sources)+1}", "kind": "note", "ref": nt.name,
                         "label": nt.name, "text": nt.summary()})
@@ -112,11 +118,31 @@ def _response_format(tier):
     return None
 
 
-def _llm_diagram(request, page_images, sources, settings, *, mode="auto", max_retries=1):
+def _repair_note(viol) -> str:
+    """A corrective instruction naming the exact catalog violations to fix on the next attempt."""
+    parts = []
+    if viol["hallucinated"]:
+        parts.append("These labels are not in the catalog and were removed — replace them with "
+                     "catalog items or omit them: " + ", ".join(viol["hallucinated"]) + ".")
+    if viol["infeasible_edges"]:
+        parts.append("These connections are not permitted (the items cannot connect): "
+                     + "; ".join(f"{a} -> {b}" for a, b in viol["infeasible_edges"]) + ".")
+    if viol["missing"]:
+        parts.append("These required items are missing and MUST appear: "
+                     + ", ".join(viol["missing"]) + ".")
+    return ("Your previous diagram violated the catalog. " + " ".join(parts)
+            + " Return corrected JSON using ONLY items that appear in the attached table(s).")
+
+
+def _llm_diagram(request, page_images, sources, settings, *, mode="auto", max_retries=1,
+                 extra_note=""):
     from colpali_rag.generator import _image_data_uri, _post_chat
     import httpx
 
-    content = [{"type": "text", "text": _INSTR + f"\n\nRequest: {request}"}]
+    head = _INSTR + f"\n\nRequest: {request}"
+    if extra_note:
+        head += "\n\n" + extra_note
+    content = [{"type": "text", "text": head}]
     for i, im in enumerate(page_images, start=1):
         content.append({"type": "text", "text": f"[{i}] page image:"})
         content.append({"type": "image_url", "image_url": {"url": _image_data_uri(im)}})
@@ -256,19 +282,48 @@ def _demo_diagram(request: str, sources: list) -> DiagramSpec:
 def generate_diagram(request, *, store, settings, selected_docs=None, tables=None,
                      notes=None, reranker=None, lock=None, top_k=6):
     """Produce (DiagramSpec, sources). Uses the LLM when configured, else the demo
-    generator. Never raises on a model/parse failure — always returns a diagram."""
+    generator. Never raises on a model/parse failure — always returns a diagram.
+
+    When a catalog is active, the model is re-prompted with the SPECIFIC violations (parts not in
+    the catalog, illegal connections, missing required items) up to CATALOG_REPAIR_MAX times
+    before a terminal gate decides to emit or abstain. With no catalog configured (the default),
+    none of this runs and behavior is unchanged."""
+    from colpali_rag.studio.catalog import (
+        apply_terminal_gate, build_catalog, project, violation_total)
+
     sources, page_images = collect_sources(
         request, store=store, selected_docs=selected_docs, tables=tables, notes=notes,
-        top_k=top_k, reranker=reranker, lock=lock)
+        top_k=top_k, reranker=reranker, lock=lock, settings=settings)
+    catalog = build_catalog(tables, settings)              # None unless CATALOG_ID_COL is set
+    active = catalog is not None and catalog.gate != "off"
+
+    # demo / no-model path: one projection, then the terminal gate
     if not getattr(settings, "vlm_enabled", False):
-        return _demo_diagram(request, sources), sources
-    try:
-        spec = _llm_diagram(request, page_images, sources, settings,
-                            mode=getattr(settings, "answer_structured_mode", "auto"),
-                            max_retries=getattr(settings, "answer_max_retries", 1))
-    except Exception as e:  # noqa: BLE001 - transport/other failure -> demo, never 500
-        log.warning("diagram LLM failed, using demo: %s: %s", type(e).__name__, e)
         spec = _demo_diagram(request, sources)
-        spec.mode = "demo-fallback"
-        spec.errors = [f"{type(e).__name__}: {e}"]
+        if active:
+            spec = apply_terminal_gate(spec, catalog, project(spec, catalog))
+        return spec, sources
+
+    # model path: generate -> project -> (if violations remain) re-prompt with them -> repeat
+    repair_max = max(0, int(getattr(settings, "catalog_repair_max", 1))) if active else 0
+    extra_note, spec, viol = "", None, None
+    for attempt in range(repair_max + 1):
+        try:
+            spec = _llm_diagram(request, page_images, sources, settings,
+                                mode=getattr(settings, "answer_structured_mode", "auto"),
+                                max_retries=getattr(settings, "answer_max_retries", 1),
+                                extra_note=extra_note)
+        except Exception as e:  # noqa: BLE001 - transport/other failure -> demo, never 500
+            log.warning("diagram LLM failed, using demo: %s: %s", type(e).__name__, e)
+            spec = _demo_diagram(request, sources)
+            spec.mode = "demo-fallback"
+            spec.errors = [f"{type(e).__name__}: {e}"]
+        if not active:
+            return spec, sources
+        viol = project(spec, catalog)
+        spec.repair_attempts = attempt
+        if violation_total(viol) == 0 or attempt >= repair_max or spec.mode == "demo-fallback":
+            break
+        extra_note = _repair_note(viol)
+    spec = apply_terminal_gate(spec, catalog, viol)
     return spec, sources

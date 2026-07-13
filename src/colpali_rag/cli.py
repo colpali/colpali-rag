@@ -67,7 +67,7 @@ def query(
     store_obj, _emb = open_index(s)
     reranker = get_reranker(s) if rerank else None
     typer.echo(f"Top {k} pages for {text!r}:")
-    for rec, score, pid in retrieve(store_obj, text, k, reranker=reranker):
+    for rec, score, pid in retrieve(store_obj, text, k, reranker=reranker, settings=s):
         typer.echo(f"  {score:9.4f}  {rec.doc}  p{rec.page}")
 
 
@@ -92,7 +92,7 @@ def eval_cmd(
     reranker = get_reranker(s) if rerank else None
     cases = load_eval(eval_file)
     ks = tuple(int(x) for x in k.split(","))
-    rep = run_eval(cases, lambda query, tk: retrieve(store_obj, query, tk, reranker=reranker), ks=ks)
+    rep = run_eval(cases, lambda query, tk: retrieve(store_obj, query, tk, reranker=reranker, settings=s), ks=ks)
     typer.echo(format_report(rep))
     if report:
         Path(report).write_text(_json.dumps(rep, indent=2))
