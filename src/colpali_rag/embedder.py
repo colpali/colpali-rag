@@ -31,13 +31,21 @@ class ColpaliEmbedder:
     name = "colpali"
 
     def __init__(self, model_id: str, device: str = "cpu", batch_size: int = 1,
-                 family: str | None = None):
+                 family: str | None = None, adapter_path: str = "", adapter_merge: bool = False):
         self.model_id = model_id
         self.device = device
         self.batch_size = batch_size
+        self.adapter = (adapter_path or "").strip()       # "" => base model; else a fine-tune
+        self.adapter_merge = adapter_merge
         self.spec = registry.resolve(model_id, family)   # raises UnsupportedModel on no match
         self.family = self.spec.family
         self._load()
+
+    @property
+    def identity(self) -> str:
+        """Index-identity key: base model plus any adapter, so a fine-tuned index can't be
+        queried by the base model (whose query vectors live in a different space)."""
+        return f"{self.model_id}@{self.adapter}" if self.adapter else self.model_id
 
     # ---- loading ---------------------------------------------------------
     def _load(self):
@@ -54,6 +62,25 @@ class ColpaliEmbedder:
                 f"failed to load {self.model_id!r} as {self.spec.model_cls}/{self.spec.proc_cls} "
                 f"(family {self.family}): {type(e).__name__}: {e}"
             ) from e
+        if self.adapter:                                  # wrap the base with a PEFT/LoRA adapter
+            try:
+                from peft import PeftModel
+            except ImportError as e:
+                raise ModelLoadError(
+                    "COLPALI_ADAPTER_PATH is set but 'peft' isn't installed — pip install peft"
+                ) from e
+            try:
+                self.model = PeftModel.from_pretrained(self.model, self.adapter)
+                if self.adapter_merge:
+                    self.model = self.model.merge_and_unload()
+                self.model = self.model.to(self.device).eval()
+            except Exception as e:  # noqa: BLE001 - add context (which adapter)
+                raise ModelLoadError(
+                    f"failed to load adapter {self.adapter!r} onto {self.model_id!r}: "
+                    f"{type(e).__name__}: {e}"
+                ) from e
+            log.info("loaded adapter %s onto %s (merged=%s)", self.adapter, self.model_id,
+                     self.adapter_merge)
         if self.spec.license not in registry.CLEAN_LICENSES:
             log.warning("model %s base license is %r (not Apache/MIT) — check terms before shipping",
                         self.model_id, self.spec.license)
@@ -206,5 +233,7 @@ class ColpaliEmbedder:
 
 
 def get_embedder(model_id: str, device: str = "cpu", batch_size: int = 1,
-                 family: str | None = None) -> ColpaliEmbedder:
-    return ColpaliEmbedder(model_id, device=device, batch_size=batch_size, family=family)
+                 family: str | None = None, adapter_path: str = "",
+                 adapter_merge: bool = False) -> ColpaliEmbedder:
+    return ColpaliEmbedder(model_id, device=device, batch_size=batch_size, family=family,
+                           adapter_path=adapter_path, adapter_merge=adapter_merge)

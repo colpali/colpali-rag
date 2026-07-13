@@ -187,6 +187,8 @@ it in real pages. See **[docs/STUDIO.md](docs/STUDIO.md)**.
 
 ## Documentation
 
+- **[docs/QUICKSTART.md](docs/QUICKSTART.md) — start here: index your own PDFs, query them,
+  integrate the retriever into your own RAG pipeline, enable the optional features, and measure.**
 - **[docs/PIPELINE.md](docs/PIPELINE.md) — the single end-to-end reference: every stage
   and how to connect every piece (models, Qdrant, reranker, answer endpoint).**
 - [docs/HANDOFF.md](docs/HANDOFF.md) — start here / repo map

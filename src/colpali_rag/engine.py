@@ -30,7 +30,9 @@ def build_index(docs_dir, settings: Settings, progress=lambda m: None):
         raise FileNotFoundError(f"no PDFs found under {docs_dir}")
 
     progress(f"loading model {settings.model} on {settings.device} …")
-    embedder = get_embedder(settings.model, settings.device, settings.batch_size, settings.family)
+    embedder = get_embedder(settings.model, settings.device, settings.batch_size, settings.family,
+                            adapter_path=getattr(settings, "adapter_path", ""),
+                            adapter_merge=getattr(settings, "adapter_merge", False))
 
     records: list[Page] = []
     images = []
@@ -60,6 +62,16 @@ def build_index(docs_dir, settings: Settings, progress=lambda m: None):
 
     progress(f"embedding {len(records)} page(s) …")
     embs = embedder.embed_pages(images)
+
+    if getattr(settings, "norm_check", True):
+        from colpali_rag.diagnostics import check_unit_norm
+        ok, stats = check_unit_norm(embs, tol=getattr(settings, "norm_tol", 1e-3))
+        if not ok:
+            progress(f"  ⚠ page embeddings deviate from unit norm (mean |‖E‖-1|={stats['mean_dev']:.4f}); "
+                     "in-memory (dot) and Qdrant (cosine) rankings may diverge — run `colpali-rag doctor`.")
+            log.warning("non-unit-norm embeddings: mean_dev=%.4f max_dev=%.4f",
+                        stats["mean_dev"], stats["max_dev"])
+
     store = build_store(settings, embedder).build_from(records, images, embs)
 
     return store, embedder, {
@@ -93,7 +105,15 @@ def open_index(settings: Settings):
             f"index was built with model {built!r} but COLPALI_MODEL is {settings.model!r}. "
             f"Re-index, or set COLPALI_MODEL={built}."
         )
-    embedder = get_embedder(settings.model, settings.device, settings.batch_size, settings.family)
+    built_adapter = meta.get("adapter", "") or ""
+    if built_adapter != (getattr(settings, "adapter_path", "") or ""):
+        raise IndexModelMismatch(
+            f"index was built with adapter {built_adapter or '(none)'} but COLPALI_ADAPTER_PATH is "
+            f"{settings.adapter_path or '(none)'!r}. Re-index, or set COLPALI_ADAPTER_PATH to match."
+        )
+    embedder = get_embedder(settings.model, settings.device, settings.batch_size, settings.family,
+                            adapter_path=getattr(settings, "adapter_path", ""),
+                            adapter_merge=getattr(settings, "adapter_merge", False))
     store = load_store(settings, embedder)   # defense-in-depth identity/schema check
     return store, embedder
 

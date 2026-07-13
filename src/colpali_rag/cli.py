@@ -4,6 +4,8 @@
   colpali-rag query "<text>"    search from the terminal
   colpali-rag serve             launch the visual web UI
   colpali-rag info              show the current index / settings
+  colpali-rag doctor            index health check (identity + embedding unit-norm)
+  colpali-rag eval <file>       measure retrieval accuracy on a labeled set
 """
 
 from __future__ import annotations
@@ -170,6 +172,53 @@ def info(
         typer.echo(f"qdrant_url : {s.qdrant_url or '(embedded on-disk)'}")
         typer.echo(f"collection : {s.collection}")
     typer.echo(f"index      : {'present' if rec.exists() else 'MISSING — run colpali-rag index <dir>'}")
+
+
+@app.command("doctor")
+def doctor(
+    data_dir: Optional[str] = typer.Option(None), store: Optional[str] = typer.Option(None),
+    sample: int = typer.Option(4000, help="patch vectors to sample for the unit-norm check"),
+):
+    """Health check: index identity (model/adapter/schema) + embedding unit-norm.
+
+    dot-product (in-memory) and cosine (Qdrant) scoring agree only when the model's page
+    vectors are unit-norm; this flags a checkpoint/fine-tune whose head dropped that.
+    """
+    import json as _json
+
+    s = _apply_overrides(get_settings(), None, None, store, data_dir, None, None)
+    rec = Path(s.data_dir) / "records.json"
+    if not rec.exists():
+        typer.secho("no index — run: colpali-rag index <pdf_dir>", fg="red")
+        raise typer.Exit(1)
+    meta = _json.loads(rec.read_text())
+    typer.echo(f"model      : {meta.get('model')}")
+    typer.echo(f"adapter    : {meta.get('adapter') or '(none)'}")
+    typer.echo(f"backend    : {meta.get('backend')}")
+    typer.echo(f"schema     : v{meta.get('schema_version')}")
+    typer.echo(f"pages      : {len(meta.get('ids', []))}")
+
+    emb_path = Path(s.data_dir) / "embeddings.pt"
+    if meta.get("backend") == "memory" and emb_path.exists():
+        import torch
+
+        from colpali_rag.diagnostics import check_unit_norm
+
+        embs = torch.load(emb_path, weights_only=False)
+        ok, stats = check_unit_norm(embs, tol=s.norm_tol, sample=sample)
+        metric = "cosine" if s.store == "qdrant" else "dot-product"
+        typer.echo(f"norm dev   : mean {stats['mean_dev']:.5f}  max {stats['max_dev']:.5f}  "
+                   f"(n={stats['n']}, tol={s.norm_tol})")
+        if ok:
+            typer.secho(f"unit-norm  : OK — {metric} scoring is safe; in-memory and Qdrant agree",
+                        fg="green")
+        else:
+            typer.secho("unit-norm  : WARN — page embeddings aren't unit-norm; the in-memory (dot) "
+                        "and Qdrant (cosine) backends can rank differently. Pick one backend, or "
+                        "re-embed with a normalizing checkpoint.", fg="yellow")
+    else:
+        typer.echo("norm dev   : (embeddings not stored locally for this backend — run doctor "
+                   "against a memory index, or use diagnostics.probe_backend_agreement)")
 
 
 if __name__ == "__main__":

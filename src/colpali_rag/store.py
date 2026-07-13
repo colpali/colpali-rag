@@ -72,6 +72,14 @@ def check_identity(meta: dict, embedder) -> None:
             f"index was built with model {built!r} but COLPALI_MODEL is {embedder.model_id!r}. "
             f"Scores would be meaningless. Re-index, or set COLPALI_MODEL={built}."
         )
+    built_adapter = meta.get("adapter", "") or ""
+    cur_adapter = getattr(embedder, "adapter", "") or ""
+    if built_adapter != cur_adapter:
+        raise IndexModelMismatch(
+            f"index was built with adapter {built_adapter or '(none)'} but the current adapter is "
+            f"{cur_adapter or '(none)'}. A fine-tune's query vectors live in a different space, so "
+            f"scores would be meaningless. Re-index, or set COLPALI_ADAPTER_PATH to match."
+        )
     sv = meta.get("schema_version")
     if sv is not None and sv != SCHEMA_VERSION:
         raise IndexModelMismatch(
@@ -135,7 +143,9 @@ class MemoryStore(_Base):
         torch.save(self._embs, self.data_dir / "embeddings.pt")
         (self.data_dir / "records.json").write_text(
             json.dumps({"records": [asdict(r) for r in self.records], "ids": self.ids,
-                        "model": self.embedder.model_id, "dim": _emb_dim(self._embs),
+                        "model": self.embedder.model_id,
+                        "adapter": getattr(self.embedder, "adapter", ""),
+                        "dim": _emb_dim(self._embs),
                         "schema_version": SCHEMA_VERSION, "backend": "memory"}, indent=2)
         )
 
@@ -193,8 +203,9 @@ class QdrantStore(_Base):
         self.data_dir.mkdir(parents=True, exist_ok=True)
         (self.data_dir / "records.json").write_text(
             json.dumps({"records": [asdict(r) for r in self.records], "ids": self.ids,
-                        "model": self.embedder.model_id, "dim": dim,
-                        "schema_version": SCHEMA_VERSION, "backend": "qdrant",
+                        "model": self.embedder.model_id,
+                        "adapter": getattr(self.embedder, "adapter", ""),
+                        "dim": dim, "schema_version": SCHEMA_VERSION, "backend": "qdrant",
                         "collection": self.collection}, indent=2)
         )
         return self

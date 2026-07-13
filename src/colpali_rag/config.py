@@ -61,6 +61,10 @@ class Settings:
     family: str | None = None              # force a family for a new checkpoint (else auto from id)
     device: str = "cpu"                    # cpu | cuda | mps
     batch_size: int = 1
+    adapter_path: str = ""                 # optional PEFT/LoRA adapter dir/id (a domain fine-tune)
+    adapter_merge: bool = False            # merge the adapter into the base weights at load time
+    norm_check: bool = True                # warn at index time if page embeddings aren't unit-norm
+    norm_tol: float = 1e-3                 # tolerance for the unit-norm check (mean |‖E‖-1|)
 
     # --- ingestion ---
     dpi: int = 150
@@ -152,6 +156,10 @@ class Settings:
             family=os.environ.get("COLPALI_FAMILY") or None,
             device=_env("COLPALI_DEVICE", cls.device),
             batch_size=_env_int("COLPALI_BATCH_SIZE", cls.batch_size),
+            adapter_path=_env("COLPALI_ADAPTER_PATH", cls.adapter_path),
+            adapter_merge=_env_bool("COLPALI_ADAPTER_MERGE", cls.adapter_merge),
+            norm_check=_env_bool("COLPALI_NORM_CHECK", cls.norm_check),
+            norm_tol=float(_env("COLPALI_NORM_TOL", str(cls.norm_tol))),
             dpi=_env_int("COLPALI_DPI", cls.dpi),
             max_dim=_env_int("COLPALI_MAX_DIM", cls.max_dim),
             store=_env("COLPALI_STORE", cls.store),
