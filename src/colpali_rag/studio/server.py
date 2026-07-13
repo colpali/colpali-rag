@@ -49,7 +49,10 @@ def _web_dist() -> Path | None:
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    from colpali_rag.config import setup_logging
+
     s = get_settings()
+    setup_logging(s.log_level)          # surface the per-generation step trace in the server console
     CTX["settings"] = s
     CTX["lock"] = _LOCK
     try:

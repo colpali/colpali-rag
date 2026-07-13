@@ -144,6 +144,10 @@ class Settings:
     hybrid_ngram_min: int = 3
     hybrid_ngram_max: int = 5
 
+    # --- logging + per-generation run logs ---
+    log_level: str = "INFO"                # DEBUG | INFO | WARNING | ERROR (the studio step trace is INFO)
+    run_log_dir: str = ""                  # if set, write a JSON + text summary of each studio run here
+
     # --- server ---
     host: str = "127.0.0.1"
     port: int = 8000
@@ -215,6 +219,8 @@ class Settings:
             hybrid_min_coverage=float(_env("COLPALI_HYBRID_MIN_COVERAGE", str(cls.hybrid_min_coverage))),
             hybrid_ngram_min=_env_int("COLPALI_HYBRID_NGRAM_MIN", cls.hybrid_ngram_min),
             hybrid_ngram_max=_env_int("COLPALI_HYBRID_NGRAM_MAX", cls.hybrid_ngram_max),
+            log_level=_env("COLPALI_LOG_LEVEL", cls.log_level),
+            run_log_dir=_env("COLPALI_RUN_LOG_DIR", cls.run_log_dir),
             host=_env("COLPALI_HOST", cls.host),
             port=_env_int("COLPALI_PORT", cls.port),
         )
@@ -222,6 +228,17 @@ class Settings:
     @property
     def vlm_enabled(self) -> bool:
         return bool(self.vlm_base_url)
+
+
+def setup_logging(level: str | None = None) -> None:
+    """Configure logging once (idempotent). Level from the argument or COLPALI_LOG_LEVEL, default
+    INFO — which surfaces the studio's per-generation step trace. Safe to call from every entrypoint."""
+    import logging
+
+    lvl = (level or os.environ.get("COLPALI_LOG_LEVEL") or "INFO").upper()
+    num = getattr(logging, lvl, logging.INFO)
+    logging.basicConfig(level=num, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
+    logging.getLogger("colpali_rag").setLevel(num)
 
 
 def get_settings() -> Settings:

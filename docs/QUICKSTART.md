@@ -91,6 +91,23 @@ colpali-rag eval eval.jsonl --k 1,5,10     # coverage@k / recall@100 / MAP / nDC
 A/B two configurations (e.g. hybrid on vs off) with a significance test using `compare_runs` — see
 [EVAL.md](EVAL.md). Ship a change only when the delta is significant, not on a hunch.
 
+## 6b. See what happened (step trace + saved run summaries)
+
+Every studio generation logs a step-by-step trace to the console (retrieve → sources studied →
+catalog constraint → model call(s) → repair passes → result) and finishes with a summary of what
+it studied and produced. Set the level and, optionally, a folder to persist a `.json` + `.txt`
+summary of every run:
+
+```bash
+export COLPALI_LOG_LEVEL=INFO          # INFO shows the per-generation step trace (default)
+export COLPALI_RUN_LOG_DIR=./runs      # write a JSON + text summary of each generation here
+```
+
+Each run file records the request, the exact pages/tables it read (with scores), the nodes and
+connections it drew, the model's reasoning/assumptions, and every constraint/repair check
+(dropped, remapped, missing-required, infeasible, withheld). The same summary is returned in the
+`/generate` API response, so the UI or your own code can show it. Great for debugging and audit.
+
 ## 7. Health-check the index
 
 ```bash

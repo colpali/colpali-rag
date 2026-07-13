@@ -278,6 +278,116 @@ def _demo_diagram(request: str, sources: list) -> DiagramSpec:
     )
 
 
+# --------------------------------------------------------------------------- run summary / logs
+def build_run_summary(request, spec, sources) -> dict:
+    """A structured record of one generation: what it studied (the sources), what it produced
+    (nodes/connections), the model's reasoning, and everything the constraint/repair machinery
+    did. JSON-serializable; `format_run_summary` renders the human version."""
+    pages = [{"id": s["id"], "ref": s.get("ref"), "doc": s.get("doc"), "page": s.get("page"),
+              "score": s.get("score"), "label": s.get("label")}
+             for s in sources if s.get("kind") == "page"]
+    tables = [{"id": s["id"], "name": s.get("ref") or s.get("label")}
+              for s in sources if s.get("kind") == "table"]
+    notes = [{"id": s["id"], "name": s.get("ref") or s.get("label")}
+             for s in sources if s.get("kind") == "note"]
+    return {
+        "request": request,
+        "mode": spec.mode,
+        "structured": spec.structured,
+        "studied": {"pages": pages, "tables": tables, "notes": notes,
+                    "n_pages": len(pages), "n_tables": len(tables), "n_notes": len(notes)},
+        "produced": {
+            "title": spec.title,
+            "n_blocks": len(spec.blocks),
+            "n_connections": len(spec.connections),
+            "blocks": [{"id": b.id, "label": b.label, "kind": b.kind, "cites": b.cites}
+                       for b in spec.blocks],
+            "connections": [{"from": c.source, "to": c.target, "kind": c.kind, "label": c.label}
+                            for c in spec.connections],
+            "groups": [{"id": g.id, "label": g.label} for g in spec.groups],
+        },
+        "reasoning": spec.reasoning,
+        "assumptions": list(spec.assumptions),
+        "checks": {
+            "repair_attempts": spec.repair_attempts,
+            "hallucinated_parts": list(spec.hallucinated_parts),
+            "remapped_parts": list(spec.remapped_parts),
+            "dropped_blocks": spec.dropped_blocks,
+            "dropped_connections": spec.dropped_connections,
+            "infeasible_connections": spec.infeasible_connections,
+            "missing_required": list(spec.missing_required),
+            "hallucinated_citations": list(spec.hallucinated_citations),
+            "withheld": spec.withheld,
+        },
+        "errors": list(spec.errors),
+    }
+
+
+def format_run_summary(s: dict) -> str:
+    """Human-readable one-screen summary of a run (for the console trace and the .txt log)."""
+    st, pr, c = s["studied"], s["produced"], s["checks"]
+    out = [f"request : {s['request']!r}",
+           f"mode    : {s['mode']} (structured={s['structured']})",
+           f"studied : {st['n_pages']} page(s), {st['n_tables']} table(s), {st['n_notes']} note(s)"]
+    out += [f"          · {p['label']}  (score {p.get('score')})" for p in st["pages"]]
+    out += [f"          · table {t['name']}" for t in st["tables"]]
+    out.append(f"produced: {pr['n_blocks']} node(s), {pr['n_connections']} connection(s) — {pr['title']!r}")
+    out += [f"          [{b['kind']}] {b['label']}" for b in pr["blocks"]]
+    if c["repair_attempts"]:
+        out.append(f"repair  : {c['repair_attempts']} re-prompt(s) to fix violations")
+    flags = []
+    if c["hallucinated_parts"]:
+        flags.append(f"dropped {len(c['hallucinated_parts'])} off-catalog node(s): {', '.join(c['hallucinated_parts'])}")
+    if c["remapped_parts"]:
+        flags.append(f"remapped {len(c['remapped_parts'])} node(s)")
+    if c["missing_required"]:
+        flags.append(f"missing required: {', '.join(c['missing_required'])}")
+    if c["infeasible_connections"]:
+        flags.append(f"{c['infeasible_connections']} infeasible edge(s)")
+    if c["dropped_connections"]:
+        flags.append(f"dropped {c['dropped_connections']} dangling edge(s)")
+    if c["hallucinated_citations"]:
+        flags.append(f"out-of-range citations: {c['hallucinated_citations']}")
+    if c["withheld"]:
+        flags.append("WITHHELD — could not be grounded to the catalog")
+    out.append("checks  : " + ("; ".join(flags) if flags else "clean"))
+    if s["errors"]:
+        out.append("errors  : " + "; ".join(s["errors"]))
+    return "\n".join(out)
+
+
+def _write_run_log(summary, settings):
+    """Persist a JSON + text summary of the run if COLPALI_RUN_LOG_DIR is set. Never fatal."""
+    run_dir = (getattr(settings, "run_log_dir", "") or "").strip()
+    if not run_dir:
+        return None
+    try:
+        import datetime
+        import json
+        from pathlib import Path
+
+        d = Path(run_dir)
+        d.mkdir(parents=True, exist_ok=True)
+        ts = datetime.datetime.now().strftime("%Y%m%d-%H%M%S-%f")
+        slug = re.sub(r"[^a-z0-9]+", "-", (summary["request"] or "run").lower()).strip("-")[:40] or "run"
+        base = d / f"{ts}_{slug}"
+        base.with_suffix(".json").write_text(json.dumps(summary, indent=2))
+        base.with_suffix(".txt").write_text(format_run_summary(summary))
+        log.info("run log written: %s.{json,txt}", base)
+        return str(base)
+    except Exception as e:  # noqa: BLE001 - a log-write failure must never break generation
+        log.warning("could not write run log to %s: %s: %s", run_dir, type(e).__name__, e)
+        return None
+
+
+def _finish(request, spec, sources, settings):
+    """Single exit: emit the run summary to the log (INFO) and to a file if configured."""
+    summary = build_run_summary(request, spec, sources)
+    log.info("run summary —\n%s", format_run_summary(summary))
+    _write_run_log(summary, settings)
+    return spec, sources
+
+
 # --------------------------------------------------------------------------- entry
 def generate_diagram(request, *, store, settings, selected_docs=None, tables=None,
                      notes=None, reranker=None, lock=None, top_k=6):
@@ -291,23 +401,36 @@ def generate_diagram(request, *, store, settings, selected_docs=None, tables=Non
     from colpali_rag.studio.catalog import (
         apply_terminal_gate, build_catalog, project, violation_total)
 
+    log.info("generate: request=%r selected=%s top_k=%s", (request or "")[:120],
+             sorted(selected_docs) if selected_docs else "(all)", top_k)
     sources, page_images = collect_sources(
         request, store=store, selected_docs=selected_docs, tables=tables, notes=notes,
         top_k=top_k, reranker=reranker, lock=lock, settings=settings)
+    n_pg = sum(1 for s in sources if s.get("kind") == "page")
+    n_tb = sum(1 for s in sources if s.get("kind") == "table")
+    n_nt = sum(1 for s in sources if s.get("kind") == "note")
+    log.info("generate: studied %d page(s) + %d table(s) + %d note(s)", n_pg, n_tb, n_nt)
+
     catalog = build_catalog(tables, settings)              # None unless CATALOG_ID_COL is set
     active = catalog is not None and catalog.gate != "off"
+    if active:
+        log.info("generate: catalog constraint ON (gate=%s, %d id(s), %d required, %d with interfaces)",
+                 catalog.gate, len(catalog.canonical), len(catalog.required), len(catalog.interfaces))
 
     # demo / no-model path: one projection, then the terminal gate
     if not getattr(settings, "vlm_enabled", False):
+        log.info("generate: no model configured -> demo generation")
         spec = _demo_diagram(request, sources)
         if active:
             spec = apply_terminal_gate(spec, catalog, project(spec, catalog))
-        return spec, sources
+        return _finish(request, spec, sources, settings)
 
     # model path: generate -> project -> (if violations remain) re-prompt with them -> repeat
     repair_max = max(0, int(getattr(settings, "catalog_repair_max", 1))) if active else 0
     extra_note, spec, viol = "", None, None
     for attempt in range(repair_max + 1):
+        log.info("generate: model call (attempt %d/%d)%s", attempt + 1, repair_max + 1,
+                 " with a repair note" if extra_note else "")
         try:
             spec = _llm_diagram(request, page_images, sources, settings,
                                 mode=getattr(settings, "answer_structured_mode", "auto"),
@@ -319,11 +442,14 @@ def generate_diagram(request, *, store, settings, selected_docs=None, tables=Non
             spec.mode = "demo-fallback"
             spec.errors = [f"{type(e).__name__}: {e}"]
         if not active:
-            return spec, sources
+            return _finish(request, spec, sources, settings)
         viol = project(spec, catalog)
         spec.repair_attempts = attempt
+        log.info("generate: attempt %d -> %d violation(s) (dropped=%d, infeasible=%d, missing=%d)",
+                 attempt, violation_total(viol), viol["dropped"], len(viol["infeasible_edges"]),
+                 len(viol["missing"]))
         if violation_total(viol) == 0 or attempt >= repair_max or spec.mode == "demo-fallback":
             break
         extra_note = _repair_note(viol)
     spec = apply_terminal_gate(spec, catalog, viol)
-    return spec, sources
+    return _finish(request, spec, sources, settings)

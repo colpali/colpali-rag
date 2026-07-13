@@ -126,10 +126,12 @@ def generate(session_id: str = Form(...), message: str = Form(...),
         reranker=CTX.get("reranker"), lock=CTX.get("lock"), top_k=max(1, min(top_k, 12)))
     sess.last_spec = spec
     sess.last_sources = srcs
+    from colpali_rag.studio.generate import build_run_summary
     from colpali_rag.studio.session import Turn
     payload = spec.to_dict(srcs)
     sess.history.append(Turn(request=message, spec=payload))
-    return {"session_id": sess.id, "spec": payload, "sources": srcs}
+    return {"session_id": sess.id, "spec": payload, "sources": srcs,
+            "summary": build_run_summary(message, spec, srcs)}
 
 
 @router.get("/export")

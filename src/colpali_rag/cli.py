@@ -21,6 +21,14 @@ app = typer.Typer(add_completion=False, no_args_is_help=True,
                   help="Generic visual document RAG powered by ColPali (late-interaction vision retrieval).")
 
 
+@app.callback()
+def _main():
+    """Configure logging (COLPALI_LOG_LEVEL, default INFO) before any command runs."""
+    from colpali_rag.config import setup_logging
+
+    setup_logging()
+
+
 def _apply_overrides(settings, model, device, store, data_dir, collection, qdrant_url):
     if model: settings.model = model
     if device: settings.device = device
