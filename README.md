@@ -187,8 +187,10 @@ it in real pages. See **[docs/STUDIO.md](docs/STUDIO.md)**.
 
 ## Documentation
 
-- **[docs/QUICKSTART.md](docs/QUICKSTART.md) — start here: index your own PDFs, query them,
-  integrate the retriever into your own RAG pipeline, enable the optional features, and measure.**
+- **[docs/DEMO.md](docs/DEMO.md) — get a demo running in ~10 minutes (Windows, no Docker, no GPU):
+  the exact install, an instant no-model path, and a grounded run on a handful of pages.**
+- **[docs/QUICKSTART.md](docs/QUICKSTART.md) — index your own PDFs, query them, integrate the
+  retriever into your own RAG pipeline, enable the optional features, and measure.**
 - **[docs/PIPELINE.md](docs/PIPELINE.md) — the single end-to-end reference: every stage
   and how to connect every piece (models, Qdrant, reranker, answer endpoint).**
 - [docs/HANDOFF.md](docs/HANDOFF.md) — start here / repo map

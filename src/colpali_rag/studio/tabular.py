@@ -33,22 +33,30 @@ class Table:
     total_rows: int
     sheet: str | None = None
     note: str = ""
+    row_numbers: list[int] = field(default_factory=list)   # 1-based SOURCE row of each stored row
 
     def summary(self, *, max_rows: int = MAX_PREVIEW_ROWS, max_cols: int = MAX_COLS,
                 max_cell: int = MAX_CELL) -> str:
-        """A compact, citable text rendering the model sees as one source. The stored table
-        is complete; these caps bound only this preview, never the constraint channel."""
+        """A compact, citable text rendering the model sees as one source. The stored table is
+        complete; these caps bound only this preview, never the constraint channel. Each row is
+        labeled with its real source-file row number, so a model can cite an exact row."""
         cols = [_clip(c, max_cell) for c in self.columns[:max_cols]]
         head = " | ".join(cols) if cols else "(no header)"
+        note = "  (leading number = source-file row)" if self.row_numbers else ""
         lines = [f"Table {self.name}" + (f" [sheet {self.sheet}]" if self.sheet else "")
-                 + f" — {self.total_rows} row(s), {len(self.columns)} column(s)",
+                 + f" — {self.total_rows} row(s), {len(self.columns)} column(s)" + note,
                  head, "-" * min(len(head), 80)]
         shown = self.rows[:max_rows]
-        for i, r in enumerate(shown, start=1):
-            lines.append(f"{i:>3}: " + " | ".join(_clip(c, max_cell) for c in r[:max_cols]))
+        for i, r in enumerate(shown):
+            rn = self.row_numbers[i] if i < len(self.row_numbers) else i + 1
+            lines.append(f"{rn:>4}: " + " | ".join(_clip(c, max_cell) for c in r[:max_cols]))
         if self.total_rows > len(shown):
             lines.append(f"… ({self.total_rows - len(shown)} more row(s))")
         return "\n".join(lines)
+
+    def source_row(self, i: int) -> int | None:
+        """The 1-based source-file row number of stored row `i` (0-based), or None if unknown."""
+        return self.row_numbers[i] if 0 <= i < len(self.row_numbers) else None
 
 
 def _norm(v) -> str:
@@ -64,13 +72,16 @@ def _clip(v, max_cell: int = MAX_CELL) -> str:
 
 
 def _from_matrix(name: str, matrix: list[list], sheet: str | None = None) -> Table:
-    matrix = [row for row in matrix if any(c not in (None, "") for c in row)]
-    if not matrix:
+    # keep each non-empty row's ORIGINAL 1-based position, so citations point at the real source row
+    numbered = [(i, row) for i, row in enumerate(matrix, start=1)
+                if any(c not in (None, "") for c in row)]
+    if not numbered:
         return Table(name=name, columns=[], rows=[], total_rows=0, sheet=sheet, note="empty")
-    header = [_norm(c) for c in matrix[0]]                 # full width, uncapped
-    body = matrix[1:]
-    rows = [[_norm(c) for c in row] for row in body]       # full rows, full cells, uncapped
-    return Table(name=name, columns=header, rows=rows, total_rows=len(body), sheet=sheet)
+    header = [_norm(c) for c in numbered[0][1]]            # full width, uncapped
+    body = numbered[1:]
+    rows = [[_norm(c) for c in row] for _, row in body]    # full rows, full cells, uncapped
+    return Table(name=name, columns=header, rows=rows, total_rows=len(body),
+                 row_numbers=[n for n, _ in body], sheet=sheet)
 
 
 def load_csv(name: str, data: bytes) -> Table:

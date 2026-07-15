@@ -40,13 +40,15 @@ def _fresh_cleanup(settings, embedder, progress):
         log.warning("fresh cleanup: %s", e)
 
 
-def build_index(docs_dir, settings: Settings, progress=lambda m: None, fresh: bool = False):
+def build_index(docs_dir, settings: Settings, progress=lambda m: None, fresh: bool = False,
+                limit: int | None = None):
     """Rasterize + embed every PDF page under docs_dir and persist the index, INCREMENTALLY.
 
     Each document is embedded and checkpointed before the next, so a long run can be interrupted
     and resumed, and re-running only embeds documents that aren't already indexed. Progress prints
     a live pages/sec and ETA. Pass fresh=True to rebuild from scratch (e.g. after changing DPI /
-    max_dim, which the identity guard does not track). A single unreadable PDF is skipped, not fatal.
+    max_dim, which the identity guard does not track). Pass limit=N to embed only the first N
+    pages — a fast way to get a demo index off a big corpus. A single unreadable PDF is skipped.
     """
     import time
 
@@ -75,6 +77,9 @@ def build_index(docs_dir, settings: Settings, progress=lambda m: None, fresh: bo
 
     todo = [p for p in pdfs if doc_id(p, docs_dir) not in done_docs]
     total = sum(page_count(p) for p in todo)            # cheap page-count pass for the ETA
+    if limit:
+        total = min(total, int(limit))
+        progress(f"--limit {limit}: embedding at most {total} page(s) for a quick demo index")
     if not todo:
         progress("nothing new to embed — the index is already up to date")
     else:
@@ -86,6 +91,9 @@ def build_index(docs_dir, settings: Settings, progress=lambda m: None, fresh: bo
     skipped, done_pages, since_ckpt, worst_dev = [], 0, 0, 0.0
     t0 = time.time()
     for pdf in todo:
+        if limit and done_pages >= limit:
+            progress(f"reached the --limit of {limit} page(s); stopping")
+            break
         did = doc_id(pdf, docs_dir)
         try:
             texts = extract_page_texts(pdf)
@@ -96,6 +104,10 @@ def build_index(docs_dir, settings: Settings, progress=lambda m: None, fresh: bo
             skipped.append(str(pdf))
             continue
         recs = [Page(doc=did, page=i, text=t) for i, t in enumerate(texts, start=1)]
+        if limit:                                       # cap this doc to the remaining budget
+            room = max(0, limit - done_pages)
+            if room < len(imgs):
+                recs, imgs = recs[:room], imgs[:room]
         ts = time.time()
         embs = embedder.embed_pages(imgs)
         dt = max(1e-9, time.time() - ts)

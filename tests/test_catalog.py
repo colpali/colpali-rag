@@ -65,6 +65,18 @@ def test_summary_respects_caps():
     assert "… (2 more row(s))" in t.summary(max_rows=1)
 
 
+def test_source_row_provenance():
+    from colpali_rag.studio.tabular import load_csv
+
+    # a blank line between data rows: source row numbers must skip it, not renumber sequentially
+    t = load_csv("s.csv", b"id,val\nAX-100,1\n\nBX-200,2\n")
+    assert t.total_rows == 2
+    assert t.row_numbers == [2, 4]                    # header=1, AX-100=2, blank=3 dropped, BX-200=4
+    assert t.source_row(1) == 4 and t.source_row(9) is None
+    s = t.summary()
+    assert "4: BX-200 | 2" in s and "source-file row" in s   # rows labeled by their real source row
+
+
 # --------------------------------------------------------------------------- canon / tokens
 def test_canon_preserves_internal_id_punctuation():
     assert canon("(AX-1234)") == "ax-1234"            # surrounding punctuation stripped

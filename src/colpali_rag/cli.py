@@ -49,16 +49,18 @@ def index(
     collection: Optional[str] = typer.Option(None, help="Qdrant collection name"),
     qdrant_url: Optional[str] = typer.Option(None, help="Qdrant server URL (else embedded on-disk)"),
     fresh: bool = typer.Option(False, "--fresh", help="rebuild from scratch (else resume/add only new docs)"),
+    limit: Optional[int] = typer.Option(None, "--limit", help="embed only the first N pages (fast demo index off a big corpus)"),
 ):
     """Rasterize + embed every page under PDF_DIR and persist a searchable index.
 
     Incremental + resumable: re-running only embeds documents not already indexed, and an
-    interrupted run picks up where it left off. Use --fresh to rebuild (e.g. after changing DPI).
+    interrupted run picks up where it left off. Use --fresh to rebuild (e.g. after changing DPI),
+    or --limit N to index just the first N pages for a quick demo.
     """
     from colpali_rag.engine import build_index
 
     s = _apply_overrides(get_settings(), model, device, store, data_dir, collection, qdrant_url)
-    _store, _emb, info = build_index(pdf_dir, s, progress=lambda m: typer.echo(m), fresh=fresh)
+    _store, _emb, info = build_index(pdf_dir, s, progress=lambda m: typer.echo(m), fresh=fresh, limit=limit)
     typer.secho(f"\n✓ indexed {info['pages']} page(s) from {info['docs']} doc(s) "
                 f"({info.get('new_pages', 0)} newly embedded) → {info['store']} store at {info['data_dir']}",
                 fg="green")
