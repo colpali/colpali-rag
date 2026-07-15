@@ -69,6 +69,7 @@ class Settings:
     # --- ingestion ---
     dpi: int = 150
     max_dim: int = 1600
+    index_checkpoint_pages: int = 250      # persist the index every N pages (resumable long runs)
 
     # --- store ---
     store: str = "memory"                  # memory | qdrant
@@ -167,6 +168,7 @@ class Settings:
             norm_tol=float(_env("COLPALI_NORM_TOL", str(cls.norm_tol))),
             dpi=_env_int("COLPALI_DPI", cls.dpi),
             max_dim=_env_int("COLPALI_MAX_DIM", cls.max_dim),
+            index_checkpoint_pages=_env_int("COLPALI_INDEX_CHECKPOINT_PAGES", cls.index_checkpoint_pages),
             store=_env("COLPALI_STORE", cls.store),
             data_dir=_env("COLPALI_DATA_DIR", cls.data_dir),
             qdrant_url=os.environ.get("QDRANT_URL") or None,

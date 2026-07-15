@@ -14,6 +14,7 @@ from colpali_rag.pdf import (
     doc_id,
     extract_page_texts,
     list_pdfs,
+    page_count,
     render_page_images,
     text_coverage,
 )
@@ -22,9 +23,33 @@ from colpali_rag.store import build_store, load_store
 log = logging.getLogger(__name__)
 
 
-def build_index(docs_dir, settings: Settings, progress=lambda m: None):
-    """Rasterize + embed every PDF page under docs_dir and persist the index.
-    A single unreadable PDF is skipped (logged), not fatal."""
+def _fresh_cleanup(settings, embedder, progress):
+    """Drop an existing index so a fresh build doesn't append to it."""
+    rec_path = Path(settings.data_dir) / "records.json"
+    if not rec_path.exists():
+        return
+    progress("fresh build — clearing the existing index")
+    try:
+        if settings.store == "qdrant":
+            tmp = build_store(settings, embedder)
+            if tmp.client.collection_exists(tmp.collection):
+                tmp.client.delete_collection(tmp.collection)
+        rec_path.unlink(missing_ok=True)
+        (Path(settings.data_dir) / "embeddings.pt").unlink(missing_ok=True)
+    except Exception as e:  # noqa: BLE001 - best-effort cleanup
+        log.warning("fresh cleanup: %s", e)
+
+
+def build_index(docs_dir, settings: Settings, progress=lambda m: None, fresh: bool = False):
+    """Rasterize + embed every PDF page under docs_dir and persist the index, INCREMENTALLY.
+
+    Each document is embedded and checkpointed before the next, so a long run can be interrupted
+    and resumed, and re-running only embeds documents that aren't already indexed. Progress prints
+    a live pages/sec and ETA. Pass fresh=True to rebuild from scratch (e.g. after changing DPI /
+    max_dim, which the identity guard does not track). A single unreadable PDF is skipped, not fatal.
+    """
+    import time
+
     pdfs = list_pdfs(docs_dir)
     if not pdfs:
         raise FileNotFoundError(f"no PDFs found under {docs_dir}")
@@ -34,10 +59,34 @@ def build_index(docs_dir, settings: Settings, progress=lambda m: None):
                             adapter_path=getattr(settings, "adapter_path", ""),
                             adapter_merge=getattr(settings, "adapter_merge", False))
 
-    records: list[Page] = []
-    images = []
-    skipped = []
-    for pdf in pdfs:
+    if fresh:
+        _fresh_cleanup(settings, embedder, progress)
+
+    # Resume: reuse an existing same-model index and skip documents already embedded.
+    rec_path = Path(settings.data_dir) / "records.json"
+    store, done_docs = None, set()
+    if rec_path.exists():
+        store = load_store(settings, embedder)          # raises IndexModelMismatch on a model change
+        done_docs = {r.doc for r in store.records}
+        if done_docs:
+            progress(f"resuming — {len(done_docs)} document(s) already indexed; embedding the rest")
+    if store is None:
+        store = build_store(settings, embedder)
+
+    todo = [p for p in pdfs if doc_id(p, docs_dir) not in done_docs]
+    total = sum(page_count(p) for p in todo)            # cheap page-count pass for the ETA
+    if not todo:
+        progress("nothing new to embed — the index is already up to date")
+    else:
+        progress(f"embedding {len(todo)} document(s) / ~{total} page(s)"
+                 + (f" ({len(pdfs) - len(todo)} already done)" if done_docs else ""))
+
+    ckpt_every = max(1, int(getattr(settings, "index_checkpoint_pages", 250)))
+    norm_on, tol = getattr(settings, "norm_check", True), getattr(settings, "norm_tol", 1e-3)
+    skipped, done_pages, since_ckpt, worst_dev = [], 0, 0, 0.0
+    t0 = time.time()
+    for pdf in todo:
+        did = doc_id(pdf, docs_dir)
         try:
             texts = extract_page_texts(pdf)
             imgs = render_page_images(pdf, dpi=settings.dpi, max_dim=settings.max_dim)
@@ -46,37 +95,40 @@ def build_index(docs_dir, settings: Settings, progress=lambda m: None):
             progress(f"  ⚠ skipped {pdf.name}: {e}")
             skipped.append(str(pdf))
             continue
-        did = doc_id(pdf, docs_dir)
-        for i, (t, im) in enumerate(zip(texts, imgs), start=1):
-            records.append(Page(doc=did, page=i, text=t))
-            images.append(im)
-        progress(f"  · {did}: {len(imgs)} page(s)")
+        recs = [Page(doc=did, page=i, text=t) for i, t in enumerate(texts, start=1)]
+        ts = time.time()
+        embs = embedder.embed_pages(imgs)
+        dt = max(1e-9, time.time() - ts)
+        if norm_on:
+            from colpali_rag.diagnostics import check_unit_norm
+            worst_dev = max(worst_dev, check_unit_norm(embs, tol=tol)[1]["mean_dev"])
+        store.add(recs, imgs, embs)
+        done_pages += len(imgs)
+        since_ckpt += len(imgs)
+        if since_ckpt >= ckpt_every:
+            store.save()                                # checkpoint so a crash loses <= ckpt_every pages
+            since_ckpt = 0
+        rate = done_pages / max(1e-9, time.time() - t0)
+        eta = (max(0, total - done_pages) / rate / 60) if rate else 0
+        progress(f"  · {did}: {len(imgs)} page(s) in {dt:.1f}s ({len(imgs)/dt:.2f} p/s)  |  "
+                 f"{done_pages}/{total} · {rate:.2f} p/s avg · ETA ~{eta:.0f} min")
+    store.save()                                        # final checkpoint
 
-    if not records:
+    if len(store) == 0:
         raise FileNotFoundError(f"no readable PDF pages under {docs_dir}")
 
-    cov = text_coverage([r.text for r in records])
+    cov = text_coverage([r.text for r in store.records])
     if cov < 0.5:
         progress(f"  ⚠ only {cov:.0%} of pages have extractable text — likely scanned; "
                  "ColPali reads pixels so retrieval still works, but keyword filtering won't.")
-
-    progress(f"embedding {len(records)} page(s) …")
-    embs = embedder.embed_pages(images)
-
-    if getattr(settings, "norm_check", True):
-        from colpali_rag.diagnostics import check_unit_norm
-        ok, stats = check_unit_norm(embs, tol=getattr(settings, "norm_tol", 1e-3))
-        if not ok:
-            progress(f"  ⚠ page embeddings deviate from unit norm (mean |‖E‖-1|={stats['mean_dev']:.4f}); "
-                     "in-memory (dot) and Qdrant (cosine) rankings may diverge — run `colpali-rag doctor`.")
-            log.warning("non-unit-norm embeddings: mean_dev=%.4f max_dev=%.4f",
-                        stats["mean_dev"], stats["max_dev"])
-
-    store = build_store(settings, embedder).build_from(records, images, embs)
+    if norm_on and worst_dev > tol:
+        progress(f"  ⚠ page embeddings deviate from unit norm (mean |‖E‖-1|≈{worst_dev:.4f}); "
+                 "in-memory (dot) and Qdrant (cosine) rankings may diverge — run `colpali-rag doctor`.")
 
     return store, embedder, {
-        "docs": len({r.doc for r in records}),
-        "pages": len(records),
+        "docs": len({r.doc for r in store.records}),
+        "pages": len(store),
+        "new_pages": done_pages,
         "skipped": len(skipped),
         "model": settings.model,
         "device": settings.device,

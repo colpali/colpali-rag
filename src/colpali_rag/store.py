@@ -131,6 +131,18 @@ class MemoryStore(_Base):
         self.save()
         return self
 
+    def add(self, records, images, embs):
+        """Append pages to the index (incremental / resumable build). Persists the images; call
+        save() to checkpoint the embeddings + metadata to disk."""
+        if self._embs is None:
+            self._embs = []
+        recs = list(records)
+        self.records.extend(recs)
+        self._embs.extend(list(embs))
+        self.ids.extend(page_id(r.doc, r.page) for r in recs)
+        self._persist_images(recs, images)
+        return self
+
     def search(self, query: str, top_k: int = 12):
         scores = self.embedder.score(query, self._embs)
         order = sorted(range(len(scores)), key=lambda i: -scores[i])[:top_k]
@@ -200,15 +212,51 @@ class QdrantStore(_Base):
             for i, (r, e, pid) in enumerate(zip(records, embs, self.ids))
         ]
         self.client.upsert(self.collection, points=points)
+        self._dim = dim
+        self.save()
+        return self
+
+    def _ensure_collection(self, dim: int):
+        from qdrant_client import models as qm
+
+        if not self.client.collection_exists(self.collection):
+            self.client.create_collection(
+                self.collection,
+                vectors_config={"original": qm.VectorParams(
+                    size=dim, distance=qm.Distance.COSINE,
+                    multivector_config=qm.MultiVectorConfig(comparator=qm.MultiVectorComparator.MAX_SIM))},
+            )
+        self._dim = dim
+
+    def add(self, records, images, embs):
+        """Append pages to the collection (incremental / resumable build). Creates the collection
+        on first use. Call save() to checkpoint the record list to disk."""
+        from qdrant_client import models as qm
+
+        recs = list(records)
+        if not recs:
+            return self
+        self._ensure_collection(len(self.embedder.page_to_list(embs[0])[0]))
+        start = len(self.records)
+        new_ids = [page_id(r.doc, r.page) for r in recs]
+        self.records.extend(recs)
+        self.ids.extend(new_ids)
+        self._persist_images(recs, images)
+        points = [qm.PointStruct(id=start + i, vector={"original": self.embedder.page_to_list(e)},
+                                 payload={"doc": r.doc, "page": r.page, "text": r.text, "page_id": pid})
+                  for i, (r, e, pid) in enumerate(zip(recs, embs, new_ids))]
+        self.client.upsert(self.collection, points=points)
+        return self
+
+    def save(self):
         self.data_dir.mkdir(parents=True, exist_ok=True)
         (self.data_dir / "records.json").write_text(
             json.dumps({"records": [asdict(r) for r in self.records], "ids": self.ids,
                         "model": self.embedder.model_id,
                         "adapter": getattr(self.embedder, "adapter", ""),
-                        "dim": dim, "schema_version": SCHEMA_VERSION, "backend": "qdrant",
-                        "collection": self.collection}, indent=2)
+                        "dim": getattr(self, "_dim", None), "schema_version": SCHEMA_VERSION,
+                        "backend": "qdrant", "collection": self.collection}, indent=2)
         )
-        return self
 
     def search(self, query: str, top_k: int = 12):
         qv = self.embedder.embed_query_raw(query)

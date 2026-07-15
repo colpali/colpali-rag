@@ -198,6 +198,7 @@ it in real pages. See **[docs/STUDIO.md](docs/STUDIO.md)**.
 - [docs/CONSTRAINTS.md](docs/CONSTRAINTS.md) — **closed-vocabulary constraints**: force studio outputs to use only entities from an uploaded table (project, verify, repair, or abstain)
 - [docs/RETRIEVAL.md](docs/RETRIEVAL.md) — **hybrid visual + lexical retrieval** (RRF over page text) for exact identifiers
 - [docs/EVAL.md](docs/EVAL.md) — **measuring accuracy**: retrieval + structured-output metrics and a paired-bootstrap A/B
+- [docs/PERFORMANCE.md](docs/PERFORMANCE.md) — **indexing speed**: GPU vs CPU, resumable/incremental indexing, and the tuning levers
 - [docs/SCALING.md](docs/SCALING.md) — in-memory vs Qdrant + the multivector scaling recipe
 - [docs/EXTENDING.md](docs/EXTENDING.md) — roadmap to a top-tier system, mapped to files & prompts
 

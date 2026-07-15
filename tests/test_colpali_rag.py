@@ -88,6 +88,20 @@ def test_memory_store_roundtrip(tmp_path):
     assert reopened.search("q", top_k=1)[0][2] == page_id("a.pdf", 2)
 
 
+def test_memory_store_incremental_add(tmp_path):
+    # the resumable indexing path: append per-document + checkpoint, then reload
+    recs, imgs = _pages_images()
+    store = MemoryStore(_FakeEmbedder(), str(tmp_path))
+    store.add(recs[:2], imgs[:2], [0.1, 0.9])
+    store.save()
+    store.add(recs[2:], imgs[2:], [0.5])          # append the rest
+    store.save()
+    assert len(store) == 3
+    reopened = MemoryStore.load(_FakeEmbedder(), str(tmp_path))
+    assert len(reopened) == 3
+    assert [pid for _r, _s, pid in reopened.search("q", top_k=2)] == [page_id("a.pdf", 2), page_id("b.pdf", 1)]
+
+
 # --- api snippet helper ---------------------------------------------------
 def test_snippet_centers_on_match():
     from colpali_rag.app import _snippet

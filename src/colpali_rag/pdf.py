@@ -28,6 +28,21 @@ def doc_id(pdf_path, docs_dir) -> str:
         return Path(pdf_path).name
 
 
+def page_count(pdf_path) -> int:
+    """Number of pages, cheaply (opens the doc but renders nothing) — for indexing ETAs.
+    Returns 0 on an unreadable PDF rather than raising."""
+    import pypdfium2 as pdfium
+
+    try:
+        pdf = pdfium.PdfDocument(str(pdf_path))
+    except Exception:  # noqa: BLE001 - a bad PDF just contributes 0 to the estimate
+        return 0
+    try:
+        return len(pdf)
+    finally:
+        pdf.close()
+
+
 def render_page_images(pdf_path, dpi: int = 150, max_dim: int = 1600) -> list:
     """Rasterize each page to a PIL RGB image (longest side <= max_dim)."""
     import pypdfium2 as pdfium

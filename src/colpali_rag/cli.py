@@ -48,14 +48,20 @@ def index(
     data_dir: Optional[str] = typer.Option(None, help="Where to persist the index"),
     collection: Optional[str] = typer.Option(None, help="Qdrant collection name"),
     qdrant_url: Optional[str] = typer.Option(None, help="Qdrant server URL (else embedded on-disk)"),
+    fresh: bool = typer.Option(False, "--fresh", help="rebuild from scratch (else resume/add only new docs)"),
 ):
-    """Rasterize + embed every page under PDF_DIR and persist a searchable index."""
+    """Rasterize + embed every page under PDF_DIR and persist a searchable index.
+
+    Incremental + resumable: re-running only embeds documents not already indexed, and an
+    interrupted run picks up where it left off. Use --fresh to rebuild (e.g. after changing DPI).
+    """
     from colpali_rag.engine import build_index
 
     s = _apply_overrides(get_settings(), model, device, store, data_dir, collection, qdrant_url)
-    _store, _emb, info = build_index(pdf_dir, s, progress=lambda m: typer.echo(m))
+    _store, _emb, info = build_index(pdf_dir, s, progress=lambda m: typer.echo(m), fresh=fresh)
     typer.secho(f"\n✓ indexed {info['pages']} page(s) from {info['docs']} doc(s) "
-                f"→ {info['store']} store at {info['data_dir']}", fg="green")
+                f"({info.get('new_pages', 0)} newly embedded) → {info['store']} store at {info['data_dir']}",
+                fg="green")
     typer.echo(f"  model={info['model']} device={info['device']} text_coverage={info['text_coverage']}")
     typer.echo("  next: colpali-rag serve   (then open http://127.0.0.1:8000)")
 
