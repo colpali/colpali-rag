@@ -1,15 +1,26 @@
 /** @type {import('tailwindcss').Config} */
 export default {
   content: ["./index.html", "./src/**/*.{ts,tsx}"],
+  // Blueprint ships its own base/reset; disable Preflight so the two don't fight.
+  corePlugins: { preflight: false },
   theme: {
     extend: {
       colors: {
-        ink: { 900: "#0b1020", 800: "#0f172a", 700: "#111827", 600: "#1e293b" },
-        brand: { DEFAULT: "#38bdf8", 2: "#818cf8" },
+        // deep-navy surface scale (app → panels → borders), tuned for high-contrast readability
+        ink: {
+          950: "#07121f",
+          900: "#0a1a2b",
+          800: "#0e2236",
+          700: "#143049",
+          600: "#1e3d5a",
+          500: "#2b5175",
+        },
+        // cobalt primary + a lighter blue secondary
+        brand: { DEFAULT: "#4d8bff", deep: "#2b6cf0", 2: "#7aa2ff" },
         // block-kind accents (kept in sync with the backend renderers)
         kind: {
-          component: "#38bdf8",
-          system: "#818cf8",
+          component: "#4d8bff",
+          system: "#7aa2ff",
           process: "#2dd4bf",
           io: "#fbbf24",
           store: "#a78bfa",
@@ -21,7 +32,7 @@ export default {
         mono: ["ui-monospace", "SFMono-Regular", "Menlo", "monospace"],
       },
       boxShadow: {
-        glow: "0 0 0 1px rgba(56,189,248,0.25), 0 8px 30px -8px rgba(56,189,248,0.25)",
+        glow: "0 0 0 1px rgba(77,139,255,0.28), 0 8px 30px -8px rgba(77,139,255,0.30)",
       },
     },
   },

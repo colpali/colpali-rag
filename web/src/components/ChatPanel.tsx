@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { Button, Card, Icon, TextArea } from "@blueprintjs/core";
 import type { Spec } from "../types";
 
 export interface Msg {
@@ -39,8 +40,8 @@ export function ChatPanel({
   };
 
   return (
-    <section className="flex h-full w-[380px] shrink-0 flex-col border-r border-ink-600 bg-ink-900/30">
-      <div className="flex items-center justify-between border-b border-ink-600/70 px-4 py-3">
+    <section className="flex h-full w-[380px] shrink-0 flex-col border-r border-ink-600 bg-ink-950/40">
+      <div className="flex items-center justify-between border-b border-ink-600/60 px-4 py-3">
         <h3 className="font-mono text-[10px] uppercase tracking-[0.16em] text-slate-500">
           Conversation
         </h3>
@@ -52,17 +53,17 @@ export function ChatPanel({
       <div className="flex-1 space-y-3 overflow-y-auto px-4 py-4">
         {messages.length === 0 && !loading && (
           <div className="space-y-2">
-            <p className="text-sm text-slate-400">
-              Describe what you want. Try:
-            </p>
+            <p className="text-sm text-slate-400">Describe what you want. Try:</p>
             {EXAMPLES.map((e) => (
-              <button
+              <Card
                 key={e}
+                interactive
+                compact
                 onClick={() => onSend(e)}
-                className="block w-full rounded-xl border border-ink-600 bg-ink-800/50 px-3 py-2.5 text-left text-[13px] text-slate-300 transition hover:border-brand/50 hover:text-slate-100"
+                className="!bg-ink-800/60 !p-3 text-[13px] text-slate-300 transition hover:!bg-ink-700/70 hover:text-slate-100"
               >
                 {e}
-              </button>
+              </Card>
             ))}
           </div>
         )}
@@ -70,7 +71,7 @@ export function ChatPanel({
         {messages.map((m, i) =>
           m.role === "user" ? (
             <div key={i} className="fadeup flex justify-end">
-              <div className="max-w-[85%] rounded-2xl rounded-br-sm bg-brand/15 px-3.5 py-2 text-[13px] text-slate-100">
+              <div className="max-w-[85%] rounded-2xl rounded-br-sm bg-brand/20 px-3.5 py-2 text-[13px] text-slate-50">
                 {m.text}
               </div>
             </div>
@@ -89,9 +90,9 @@ export function ChatPanel({
         <div ref={endRef} />
       </div>
 
-      <div className="border-t border-ink-600/70 p-3">
-        <div className="flex items-end gap-2 rounded-2xl border border-ink-600 bg-ink-800/70 px-3 py-2 focus-within:border-brand/60">
-          <textarea
+      <div className="border-t border-ink-600/60 p-3">
+        <div className="flex items-end gap-2">
+          <TextArea
             value={text}
             onChange={(e) => setText(e.target.value)}
             onKeyDown={(e) => {
@@ -100,18 +101,20 @@ export function ChatPanel({
                 submit();
               }
             }}
+            fill
+            autoResize
             rows={1}
             placeholder="Describe what you want — e.g. how the parts connect…"
-            className="max-h-32 flex-1 resize-none bg-transparent text-[13px] text-slate-100 placeholder:text-slate-600 focus:outline-none"
+            className="!max-h-32 !min-h-[38px] text-[13px]"
           />
-          <button
+          <Button
+            intent="primary"
+            icon="arrow-up"
             onClick={submit}
             disabled={loading || !text.trim()}
-            className="grid h-8 w-8 shrink-0 place-items-center rounded-xl bg-brand text-ink-900 transition enabled:hover:brightness-110 disabled:cursor-not-allowed disabled:bg-ink-600 disabled:text-slate-500"
             title="Send (Enter)"
-          >
-            ↑
-          </button>
+            className="!rounded-lg"
+          />
         </div>
       </div>
     </section>
@@ -120,12 +123,10 @@ export function ChatPanel({
 
 function AssistantMsg({ msg }: { msg: Msg }) {
   const spec = msg.spec;
-  const sourcesUsed = spec
-    ? dedupeSources(spec)
-    : [];
+  const sourcesUsed = spec ? dedupeSources(spec) : [];
   return (
     <div className="fadeup space-y-2">
-      <div className="rounded-2xl rounded-bl-sm border border-ink-600 bg-ink-800/60 px-3.5 py-2.5">
+      <div className="rounded-2xl rounded-bl-sm border border-ink-600 bg-ink-800/70 px-3.5 py-2.5">
         <p className="text-[13px] leading-relaxed text-slate-200">{msg.text}</p>
         {spec && spec.assumptions.length > 0 && (
           <ul className="mt-2 space-y-1 border-t border-ink-600/60 pt-2">
@@ -139,16 +140,16 @@ function AssistantMsg({ msg }: { msg: Msg }) {
         )}
       </div>
       {sourcesUsed.length > 0 && (
-        <div className="flex flex-wrap gap-1 px-1">
+        <div className="flex flex-wrap items-center gap-1 px-1">
           <span className="font-mono text-[10px] uppercase tracking-wide text-slate-600">
             grounded in
           </span>
           {sourcesUsed.map((s) => (
             <span
               key={s.id}
-              className="rounded bg-ink-800 px-1.5 py-0.5 font-mono text-[10px] text-slate-400"
+              className="inline-flex items-center gap-1 rounded bg-ink-800 px-1.5 py-0.5 font-mono text-[10px] text-slate-400"
             >
-              {s.kind === "page" ? "▤ " : s.kind === "table" ? "▦ " : "✎ "}
+              <Icon icon={s.kind === "table" ? "th" : s.kind === "note" ? "annotation" : "document"} size={10} />
               {s.label}
             </span>
           ))}

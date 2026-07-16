@@ -1,4 +1,5 @@
 import { useRef, useState, type ReactNode } from "react";
+import { Button, Callout, Checkbox, Icon, Tag } from "@blueprintjs/core";
 import type { DocInfo, StudioStatus } from "../types";
 import type { SessionState } from "../api";
 
@@ -28,13 +29,13 @@ export function SourcesPanel({
   const allOn = selected.length === 0; // empty selection => all datasheets apply
 
   return (
-    <aside className="flex h-full w-[300px] shrink-0 flex-col border-r border-ink-600 bg-ink-800/40">
+    <aside className="flex h-full w-[300px] shrink-0 flex-col border-r border-ink-600 bg-ink-900/60">
       <Header />
 
       {status && (
         <div className="flex items-center gap-2 px-4 pb-3 text-xs text-slate-400">
           <span
-            className={`h-2 w-2 rounded-full ${status.mode === "llm" ? "bg-emerald-400" : "bg-sky-400"}`}
+            className={`h-2 w-2 rounded-full ${status.mode === "llm" ? "bg-emerald-400" : "bg-brand"}`}
           />
           {status.mode === "llm" ? "model connected" : "demo mode"}
           <span className="text-slate-600">·</span>
@@ -46,47 +47,45 @@ export function SourcesPanel({
         title="Datasheets"
         right={
           docs.length > 0 && (
-            <button
+            <Button
+              variant="minimal"
+              small
               onClick={() => onSelectAll(!allOn)}
-              className="font-mono text-[10px] uppercase tracking-wide text-brand hover:underline"
+              className="!font-mono !text-[10px] !uppercase !tracking-wide"
             >
               {allOn ? "pick" : "all"}
-            </button>
+            </Button>
           )
         }
       >
         {docs.length === 0 ? (
-          <p className="px-1 text-xs leading-relaxed text-slate-500">
+          <Callout intent="primary" icon="info-sign" compact className="!bg-ink-800/70 text-xs">
             {indexNote || "No datasheets indexed yet."}
-            <br />
-            <code className="mt-1 inline-block rounded bg-ink-900 px-1.5 py-0.5 text-[11px] text-sky-300">
+            <code className="mt-1.5 block w-fit rounded bg-ink-950 px-1.5 py-0.5 text-[11px] text-brand-2">
               colpali-rag index ./pdfs
             </code>
-          </p>
+          </Callout>
         ) : (
-          <ul className="flex flex-col gap-0.5">
+          <ul className="flex flex-col">
             {docs.map((d) => {
               const on = allOn || selected.includes(d.doc);
               return (
                 <li key={d.doc}>
-                  <button
-                    onClick={() => onToggle(d.doc)}
-                    className="group flex w-full items-center gap-2.5 rounded-lg px-2 py-1.5 text-left transition hover:bg-ink-700/60"
-                  >
-                    <span
-                      className={`grid h-4 w-4 shrink-0 place-items-center rounded border text-[10px] ${
-                        on
-                          ? "border-brand bg-brand/20 text-brand"
-                          : "border-ink-600 text-transparent"
-                      }`}
-                    >
-                      ✓
-                    </span>
-                    <span className="min-w-0 flex-1 truncate text-[13px] text-slate-200">
-                      {d.doc}
-                    </span>
-                    <span className="font-mono text-[10px] text-slate-500">{d.pages}p</span>
-                  </button>
+                  <Checkbox
+                    checked={on}
+                    onChange={() => onToggle(d.doc)}
+                    className="!mb-0 rounded px-1 py-0.5 hover:bg-ink-700/50"
+                    labelElement={
+                      <span className="ml-1 inline-flex w-[212px] items-center justify-between gap-2 align-middle">
+                        <span className="truncate text-[13px] text-slate-200" title={d.doc}>
+                          {d.doc}
+                        </span>
+                        <Tag minimal round className="shrink-0 !font-mono !text-[10px]">
+                          {d.pages}p
+                        </Tag>
+                      </span>
+                    }
+                  />
                 </li>
               );
             })}
@@ -108,15 +107,17 @@ export function SourcesPanel({
             if (f) onUpload(f);
           }}
           onClick={() => fileRef.current?.click()}
-          className={`cursor-pointer rounded-xl border border-dashed px-3 py-4 text-center text-xs transition ${
-            drag ? "border-brand bg-brand/10 text-brand" : "border-ink-600 text-slate-500 hover:border-slate-500"
+          className={`flex cursor-pointer flex-col items-center gap-1 rounded-lg border border-dashed px-3 py-4 text-center text-xs transition ${
+            drag ? "border-brand bg-brand/10 text-brand" : "border-ink-600 text-slate-500 hover:border-brand/60"
           }`}
         >
-          {uploading ? "uploading…" : (
+          <Icon icon="upload" size={16} className={drag ? "text-brand" : "text-slate-500"} />
+          {uploading ? (
+            "uploading…"
+          ) : (
             <>
               <span className="text-slate-300">Drop CSV · Excel · notes</span>
-              <br />
-              or click to browse
+              <span className="text-slate-500">or click to browse</span>
             </>
           )}
           <input
@@ -134,19 +135,19 @@ export function SourcesPanel({
 
         <div className="mt-2 flex flex-col gap-1">
           {session?.tables.map((t) => (
-            <Chip key={t.name} icon="▦" title={`${t.rows} rows × ${t.columns.length} cols`}>
+            <UploadChip key={t.name} icon="th" title={`${t.rows} rows × ${t.columns.length} cols`}>
               {t.name}
-            </Chip>
+            </UploadChip>
           ))}
           {session?.notes.map((n) => (
-            <Chip key={n.name} icon="✎" title={`${n.chars} chars`}>
+            <UploadChip key={n.name} icon="annotation" title={`${n.chars} chars`}>
               {n.name}
-            </Chip>
+            </UploadChip>
           ))}
         </div>
       </Section>
 
-      <div className="mt-auto px-4 py-3 text-[10px] leading-relaxed text-slate-600">
+      <div className="mt-auto px-4 py-3 text-[10px] leading-relaxed text-slate-500">
         Blocks cite the page or row they came from. Selected datasheets scope retrieval;
         empty selection uses all.
       </div>
@@ -157,8 +158,8 @@ export function SourcesPanel({
 function Header() {
   return (
     <div className="flex items-center gap-2.5 px-4 pb-2 pt-4">
-      <div className="grid h-8 w-8 place-items-center rounded-lg bg-gradient-to-br from-brand/30 to-brand-2/30 text-brand">
-        ◈
+      <div className="grid h-8 w-8 place-items-center rounded-lg bg-gradient-to-br from-brand/30 to-brand-2/25 text-brand">
+        <Icon icon="diagram-tree" size={16} />
       </div>
       <div>
         <div className="text-sm font-semibold leading-tight text-slate-100">Studio</div>
@@ -180,7 +181,7 @@ function Section({
   children: ReactNode;
 }) {
   return (
-    <div className="border-t border-ink-600/70 px-4 py-3">
+    <div className="border-t border-ink-600/60 px-4 py-3">
       <div className="mb-2 flex items-center justify-between">
         <h3 className="font-mono text-[10px] uppercase tracking-[0.16em] text-slate-500">
           {title}
@@ -192,13 +193,13 @@ function Section({
   );
 }
 
-function Chip({
+function UploadChip({
   children,
   icon,
   title,
 }: {
   children: ReactNode;
-  icon: string;
+  icon: "th" | "annotation";
   title?: string;
 }) {
   return (
@@ -206,7 +207,7 @@ function Chip({
       title={title}
       className="flex items-center gap-2 rounded-lg bg-ink-700/50 px-2.5 py-1.5 text-xs text-slate-300"
     >
-      <span className="text-slate-500">{icon}</span>
+      <Icon icon={icon} size={12} className="text-slate-500" />
       <span className="min-w-0 flex-1 truncate">{children}</span>
     </div>
   );

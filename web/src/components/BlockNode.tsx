@@ -8,7 +8,7 @@ export function BlockNode({ data, selected }: NodeProps<FlowNode>) {
     <div
       className="rounded-xl border bg-ink-800/95 px-3.5 py-2.5 backdrop-blur transition-shadow"
       style={{
-        borderColor: selected ? color : "#1e293b",
+        borderColor: selected ? color : "#1e3d5a",
         borderLeft: `3px solid ${color}`,
         minWidth: 168,
         maxWidth: 220,

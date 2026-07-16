@@ -213,13 +213,13 @@ _INDEX_HTML = r"""<!doctype html>
 <title>colpali-rag — visual document search</title>
 <style>
   :root{
-    --bg:#eef1f2; --panel:#fff; --panel2:#f5f7f8; --ink:#0e1a1f; --soft:#43555b;
-    --muted:#6a7c82; --line:#d6dee0; --accent:#0c6e7c; --accent2:#0a5a66;
+    --bg:#eef2f7; --panel:#fff; --panel2:#f4f7fb; --ink:#0d1a2b; --soft:#3f5570;
+    --muted:#6a7c92; --line:#d3ddea; --accent:#2b6cf0; --accent2:#1f57c8;
     --shadow:0 1px 2px rgba(10,40,45,.06),0 8px 24px rgba(10,40,45,.08);
   }
   @media (prefers-color-scheme:dark){:root{
-    --bg:#080f13; --panel:#0f1a20; --panel2:#13212a; --ink:#e7eeef; --soft:#aebdc1;
-    --muted:#7f9197; --line:#21333b; --accent:#3cc9d6; --accent2:#84e2ea;
+    --bg:#07121f; --panel:#0e2236; --panel2:#143049; --ink:#e8eef7; --soft:#b8c6d8;
+    --muted:#7e93a8; --line:#1e3d5a; --accent:#4d8bff; --accent2:#7aa2ff;
     --shadow:0 1px 2px rgba(0,0,0,.3),0 10px 30px rgba(0,0,0,.35);
   }}
   *{box-sizing:border-box}
@@ -243,7 +243,7 @@ _INDEX_HTML = r"""<!doctype html>
   .searchbar input:focus{outline:2px solid var(--accent);outline-offset:1px}
   .searchbar button{font:inherit;font-weight:600;padding:0 20px;border-radius:11px;border:0;cursor:pointer;
     background:var(--accent);color:#fff}
-  @media (prefers-color-scheme:dark){.searchbar button{color:#04222a}}
+  @media (prefers-color-scheme:dark){.searchbar button{color:#fff}}
   .hint{color:var(--muted);font-size:.9rem;margin:2px 2px 18px}
   .hint b{color:var(--soft)}
   .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(178px,1fr));gap:16px}
@@ -278,7 +278,7 @@ _INDEX_HTML = r"""<!doctype html>
   .tok{font:inherit;font-size:.86rem;cursor:pointer;padding:5px 11px;border-radius:20px;
     border:1px solid var(--line);background:var(--panel2);color:var(--soft)}
   .tok.active{background:var(--accent);border-color:var(--accent);color:#fff}
-  @media (prefers-color-scheme:dark){.tok.active{color:#04222a}}
+  @media (prefers-color-scheme:dark){.tok.active{color:#fff}}
   .toggle{display:flex;align-items:center;gap:9px;font-size:.9rem;color:var(--soft)}
   .snip{font-size:.9rem;color:var(--soft);background:var(--panel2);border:1px solid var(--line);
     border-radius:10px;padding:11px 13px;overflow-wrap:anywhere}

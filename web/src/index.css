@@ -6,6 +6,12 @@
   color-scheme: dark;
 }
 
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
 html,
 body,
 #root {
@@ -15,29 +21,72 @@ body,
 
 body {
   background:
-    radial-gradient(1200px 600px at 12% -10%, rgba(56, 189, 248, 0.10), transparent 60%),
-    radial-gradient(1000px 500px at 100% 0%, rgba(129, 140, 248, 0.10), transparent 55%),
-    #0b1020;
-  color: #e5e7eb;
+    radial-gradient(1200px 600px at 12% -10%, rgba(77, 139, 255, 0.12), transparent 60%),
+    radial-gradient(1000px 520px at 100% 0%, rgba(43, 108, 240, 0.10), transparent 55%),
+    #0a1a2b;
+  color: #e8eef7;
   font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
   -webkit-font-smoothing: antialiased;
+}
+
+/* ── Blueprint deep-navy / cobalt retheme ─────────────────────────────────
+   Blueprint 6 drives its components off CSS design tokens, so overriding a
+   handful of tokens under the dark theme recolours the whole component set:
+   a cobalt primary intent and navy surfaces, kept high-contrast for reading. */
+.bp6-dark {
+  --bp-intent-primary-rest: #2b6cf0;
+  --bp-intent-primary-hover: #4d8bff;
+  --bp-intent-primary-active: #1f57c8;
+  --bp-intent-primary-foreground: #ffffff;
+  --bp-surface-background-color-primary-rest: #2b6cf0;
+  --bp-surface-background-color-primary-hover: #4d8bff;
+  --bp-surface-background-color-primary-active: #1f57c8;
+  /* raise default surfaces (cards, inputs, menus) onto the navy palette */
+  --bp-surface-background-color-default-rest: #0e2236;
+  --bp-surface-background-color-default-hover: #143049;
+  --bp-surface-background-color-default-active: #1e3d5a;
+}
+.bp6-dark {
+  background: transparent;
+  color: #e8eef7;
+}
+/* Cards / panels / inputs → navy, readable text, cobalt focus */
+.bp6-dark .bp6-card,
+.bp6-dark .bp6-menu,
+.bp6-dark .bp6-popover .bp6-popover-content {
+  background-color: #0e2236;
+  color: #e8eef7;
+}
+.bp6-dark .bp6-input,
+.bp6-dark .bp6-input-group .bp6-input {
+  background-color: #0a1a2b;
+  color: #e8eef7;
+  box-shadow: inset 0 0 0 1px #1e3d5a;
+}
+.bp6-dark .bp6-input:focus,
+.bp6-dark textarea.bp6-input:focus {
+  box-shadow: inset 0 0 0 1px #4d8bff, 0 0 0 2px rgba(77, 139, 255, 0.3);
+}
+.bp6-dark .bp6-heading,
+.bp6-dark .bp6-text-muted {
+  color: inherit;
 }
 
 /* thin, quiet scrollbars */
 * {
   scrollbar-width: thin;
-  scrollbar-color: #1e293b transparent;
+  scrollbar-color: #1e3d5a transparent;
 }
 *::-webkit-scrollbar {
   width: 8px;
   height: 8px;
 }
 *::-webkit-scrollbar-thumb {
-  background: #1e293b;
+  background: #1e3d5a;
   border-radius: 8px;
 }
 
-/* React Flow: match the dark theme */
+/* React Flow: match the deep-navy theme */
 .react-flow__attribution {
   display: none;
 }
@@ -45,23 +94,23 @@ body {
   box-shadow: none !important;
 }
 .react-flow__controls-button {
-  background: #0f172a !important;
-  border-color: #1e293b !important;
-  color: #94a3b8 !important;
+  background: #0e2236 !important;
+  border-color: #1e3d5a !important;
+  color: #9fb3c8 !important;
 }
 .react-flow__controls-button:hover {
-  background: #1e293b !important;
+  background: #143049 !important;
 }
 .react-flow__edge-text {
-  fill: #cbd5e1;
+  fill: #cfe0f5;
   font-size: 11px;
 }
 .react-flow__edge-textbg {
-  fill: #0f172a;
+  fill: #0e2236;
 }
 .react-flow__minimap {
-  background: #0b1020 !important;
-  border: 1px solid #1e293b;
+  background: #0a1a2b !important;
+  border: 1px solid #1e3d5a;
   border-radius: 10px;
 }
 
