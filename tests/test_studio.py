@@ -114,3 +114,9 @@ def test_api_demo_flow():
     assert spec["blocks"] and spec["mode"] == "demo"
     assert c.get(f"/api/studio/export?session_id={sid}&fmt=mermaid").status_code == 200
     assert c.get(f"/api/studio/export?session_id={sid}&fmt=drawio").status_code == 200
+
+    ej = c.get(f"/api/studio/export?session_id={sid}&fmt=json")
+    assert ej.status_code == 200 and ej.headers["content-type"].startswith("application/json")
+    assert ej.json()["blocks"]                                  # structured spec downloadable
+    es = c.get(f"/api/studio/export?session_id={sid}&fmt=summary")
+    assert es.status_code == 200 and "produced:" in es.text     # human-readable run summary

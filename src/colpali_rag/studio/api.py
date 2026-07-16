@@ -136,17 +136,28 @@ def generate(session_id: str = Form(...), message: str = Form(...),
 
 
 @router.get("/export")
-def export(session_id: str, fmt: str = Query("drawio", pattern="^(drawio|mermaid|mmd)$")):
+def export(session_id: str, fmt: str = Query("drawio", pattern="^(drawio|mermaid|mmd|json|summary)$")):
+    import json as _json
+
     from colpali_rag.studio import render
 
     sess = SESSIONS.get(session_id)
     if sess is None or getattr(sess, "last_spec", None) is None:
         raise HTTPException(404, "no diagram to export yet")
-    if fmt == "drawio":
-        xml = render.to_drawio(sess.last_spec)
-        return Response(xml, media_type="application/xml",
+    if fmt == "drawio":                                      # draw.io / XML
+        return Response(render.to_drawio(sess.last_spec), media_type="application/xml",
                         headers={"Content-Disposition": 'attachment; filename="diagram.drawio"'})
-    return PlainTextResponse(render.to_mermaid(sess.last_spec),
+    if fmt == "json":                                        # the structured spec + citations
+        payload = sess.last_spec.to_dict(sess.last_sources)
+        return Response(_json.dumps(payload, indent=2), media_type="application/json",
+                        headers={"Content-Disposition": 'attachment; filename="diagram.json"'})
+    if fmt == "summary":                                     # human-readable run summary
+        from colpali_rag.studio.generate import build_run_summary, format_run_summary
+
+        req = sess.history[-1].request if getattr(sess, "history", None) else ""
+        text = format_run_summary(build_run_summary(req, sess.last_spec, sess.last_sources))
+        return PlainTextResponse(text, headers={"Content-Disposition": 'attachment; filename="summary.txt"'})
+    return PlainTextResponse(render.to_mermaid(sess.last_spec),  # mermaid
                              headers={"Content-Disposition": 'attachment; filename="diagram.mmd"'})
 
 

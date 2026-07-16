@@ -49,7 +49,7 @@ export const api = {
       }),
     }).then(J<DiagramResponse>),
 
-  exportUrl: (sessionId: string, fmt: "drawio" | "mermaid") =>
+  exportUrl: (sessionId: string, fmt: "drawio" | "mermaid" | "json" | "summary") =>
     `/api/studio/export?session_id=${sessionId}&fmt=${fmt}`,
 
   imageUrl: (pageId: string) =>

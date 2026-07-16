@@ -70,6 +70,8 @@ export function DiagramCanvas({
 
       {spec && sessionId && (
         <div className="absolute right-4 top-4 z-10 flex gap-1.5">
+          <ExportBtn href={api.exportUrl(sessionId, "json")}>JSON</ExportBtn>
+          <ExportBtn href={api.exportUrl(sessionId, "summary")}>Summary</ExportBtn>
           <ExportBtn href={api.exportUrl(sessionId, "mermaid")}>Mermaid</ExportBtn>
           <ExportBtn href={api.exportUrl(sessionId, "drawio")}>.drawio</ExportBtn>
         </div>

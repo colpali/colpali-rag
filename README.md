@@ -192,20 +192,33 @@ src/colpali_rag/
 ## Studio (optional)
 
 An application layer on top of the engine: **select which indexed sources apply**, **upload
-your own CSV / Excel / notes**, and **describe what you want**. A model reads the retrieved
-pages and returns a **structured, cited output — typed nodes and labeled connections, each
-citing the page or row it came from** — as an interactive React canvas you can explore and
-export.
+your own CSV / Excel / notes**, and **describe what you want** (a bulleted list of requirements
+in a chat). A model reads the retrieved pages and returns a **structured, cited output — typed
+nodes and labeled connections, each citing the page or row it came from** — as an interactive
+React canvas you can explore and export.
 
 ```bash
 pip install -e '.[rag,api,studio]'
-colpali-rag studio                     # backend + built UI at http://127.0.0.1:8000
-cd web && npm install && npm run dev    # modern dev UI at http://localhost:5173
+colpali-rag studio          # UI + backend at http://127.0.0.1:8000  (no npm — UI ships prebuilt)
 ```
 
-Runs in **demo mode** with zero infrastructure (structure inferred from the request text);
-index a corpus and point `VLM_BASE_URL` at any OpenAI-compatible vision endpoint to ground
-it in real pages. See **[docs/STUDIO.md](docs/STUDIO.md)**.
+The built UI ships inside the package, so `colpali-rag studio` just works — no Node/npm needed.
+Three panels: **Sources** (pick indexed docs, drop in `.xlsx/.csv/.txt`), **Chat** (your
+requirements), **Canvas** (the diagram). Export from the canvas toolbar:
+
+| Button | Output |
+|--------|--------|
+| **JSON** | the structured spec + citations (`diagram.json`) |
+| **.drawio** | draw.io **XML** you can open/edit in diagrams.net |
+| **Mermaid** | `diagram.mmd` |
+| **Summary** | human-readable run summary (what it studied, rows surfaced, repairs) |
+
+Every generation also writes a JSON + text run log to `runs/` by default. Runs in **demo mode**
+with zero infrastructure (structure inferred from the request text); index a corpus and point
+`VLM_BASE_URL` at any OpenAI-compatible vision endpoint to ground it in real pages.
+
+> Changing the frontend? `cd web && npm run dev` (hot-reload at :5173), or `npm run build` to
+> refresh the packaged `src/colpali_rag/studio/web_dist`. See **[docs/STUDIO.md](docs/STUDIO.md)**.
 
 ## Documentation
 
