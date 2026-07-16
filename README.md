@@ -110,20 +110,42 @@ Every flag mirrors an env var, e.g. `colpali-rag index ./pdfs --model vidore/col
 
 ---
 
-## Scaling with Qdrant (optional)
+## Qdrant + a vector dashboard (no Docker, no npm)
 
-The in-process store does exact MaxSim in Python — fine for hundreds–thousands of pages.
-For more, use **Qdrant** (native multivector MAX_SIM):
+The in-process store does exact MaxSim in Python — fine for hundreds–thousands of pages. To scale
+to **Qdrant** (native multivector MAX_SIM) *and* get a web dashboard to browse your vectors, the
+tool runs a local Qdrant server for you — no Docker, no npm, nothing installed globally.
+
+Already indexed with the default store? You **don't re-embed** — `migrate` reuses the vectors you
+already computed (`colpali_data/embeddings.pt`).
 
 ```bash
-docker compose up -d qdrant                       # ships in docker-compose.yml
-export COLPALI_STORE=qdrant QDRANT_URL=http://localhost:6333
-colpali-rag index ./pdfs
-colpali-rag serve
+colpali-rag index ./pdfs        # 1. embed once  → ./colpali_data  (skip if already done)
+
+colpali-rag qdrant              # 2. start a local Qdrant + dashboard (downloads a ~70MB binary
+                                #    the first time). Leave it running.
+
+# --- in a second terminal ---
+colpali-rag migrate             # 3. copy existing embeddings into Qdrant (no re-embedding)
+
+export COLPALI_STORE=qdrant QDRANT_URL=http://localhost:6333    # Windows: use `set VAR=value`
+colpali-rag serve               # 4. serve the app UI against Qdrant
 ```
 
-Without `QDRANT_URL`, `COLPALI_STORE=qdrant` uses an **embedded on-disk** Qdrant under
-`COLPALI_DATA_DIR/qdrant` — persistent, still no server to run.
+Two web UIs, both local:
+
+| URL | What |
+|-----|------|
+| http://localhost:8000 | the ColPali app — search, per-token heatmaps, studio |
+| http://localhost:6333/dashboard | the **Qdrant dashboard** — browse the `documents` collection & vectors |
+
+`colpali-rag qdrant` fetches the official prebuilt Qdrant binary for your OS (macOS / Linux /
+Windows) into `colpali_data/qdrant-server/` and serves the bundled dashboard from there. It's a
+one-time download; after that it just starts.
+
+**Alternatives.** Prefer Docker? `docker compose up -d qdrant` still works (`docker-compose.yml`
+ships in the repo). Just want the store with *no* server or dashboard? Set `COLPALI_STORE=qdrant`
+with **no** `QDRANT_URL` — that uses an embedded on-disk Qdrant under `COLPALI_DATA_DIR/qdrant`.
 
 ---
 

@@ -5,6 +5,7 @@
   colpali-rag serve             launch the visual web UI
   colpali-rag info              show the current index / settings
   colpali-rag doctor            index health check (identity + embedding unit-norm)
+  colpali-rag qdrant            run a local Qdrant server + web dashboard (no Docker/npm)
   colpali-rag migrate           push an existing index into Qdrant (no re-embedding)
   colpali-rag eval <file>       measure retrieval accuracy on a labeled set
 """
@@ -85,6 +86,24 @@ def migrate(
     migrate_index(s, progress=lambda m: typer.echo(m))
     typer.secho(f"\n✓ migrated. Serve it with:  set COLPALI_STORE=qdrant  (QDRANT_URL={s.qdrant_url})  "
                 "then colpali-rag serve.\n  Dashboard: http://localhost:6333/dashboard", fg="green")
+
+
+@app.command()
+def qdrant(data_dir: Optional[str] = typer.Option(None, help="Where to keep the server + its storage")):
+    """Download (once) and run a native Qdrant server + web dashboard — no Docker, no npm.
+
+    Leaves the server running in the foreground; open http://localhost:6333/dashboard.
+    In another terminal:  colpali-rag migrate   then   colpali-rag serve.
+    """
+    from colpali_rag.qdrant_server import run_server
+
+    s = get_settings()
+    if data_dir:
+        s.data_dir = data_dir
+    try:
+        run_server(s, progress=lambda m: typer.echo(m))
+    except KeyboardInterrupt:
+        typer.echo("\nqdrant stopped.")
 
 
 @app.command()
