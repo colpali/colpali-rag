@@ -97,17 +97,24 @@ def select(session_id: str = Form(...), docs: str = Form("")):
     return _session_dict(sess)
 
 
+MAX_UPLOAD_BYTES = 128_000_000   # 128 MB/file — huge multi-sheet workbooks are processed fully
+
+
 @router.post("/upload")
-async def upload(session_id: str = Form(...), file: UploadFile = File(...)):
+async def upload(session_id: str = Form(...), files: list[UploadFile] = File(...)):
+    """Attach one or more tables/notes to the session. Accepts many files in a single request
+    (drag a whole folder of workbooks in); each is added independently."""
     sess = SESSIONS.get_or_create(session_id)
-    data = await file.read()
-    if len(data) > 8_000_000:
-        raise HTTPException(413, "file too large (8 MB limit)")
-    try:
-        note = sess.add_upload(file.filename or "upload", data)
-    except RuntimeError as e:
-        raise HTTPException(422, str(e)) from e
-    return {"status": note, "session": _session_dict(sess)}
+    notes = []
+    for f in files:
+        data = await f.read()
+        if len(data) > MAX_UPLOAD_BYTES:
+            raise HTTPException(413, f"{f.filename}: file too large ({MAX_UPLOAD_BYTES // 1_000_000} MB limit)")
+        try:
+            notes.append(sess.add_upload(f.filename or "upload", data))
+        except RuntimeError as e:
+            raise HTTPException(422, f"{f.filename}: {e}") from e
+    return {"status": "; ".join(notes), "session": _session_dict(sess)}
 
 
 @router.post("/generate")

@@ -55,6 +55,11 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title="colpali-rag", lifespan=lifespan)
 
+# OpenAI-compatible /v1 endpoint so Open WebUI (or any OpenAI client) can use this as a model.
+from colpali_rag.openai_api import router as _openai_router  # noqa: E402
+
+app.include_router(_openai_router)
+
 
 def _need_index():
     if _STATE["store"] is None:

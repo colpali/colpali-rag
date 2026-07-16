@@ -106,8 +106,10 @@ def test_api_demo_flow():
     assert c.get("/api/studio/status").json()["mode"] == "demo"
     sid = c.post("/api/studio/session").json()["session_id"]
     up = c.post("/api/studio/upload", data={"session_id": sid},
-                files={"file": ("pins.csv", b"pin,net\n1,VCC\n", "text/csv")})
-    assert "pins.csv" in up.json()["status"]
+                files=[("files", ("pins.csv", b"pin,net\n1,VCC\n", "text/csv")),
+                       ("files", ("nets.csv", b"a,b\n1,2\n", "text/csv"))])
+    status = up.json()["status"]
+    assert "pins.csv" in status and "nets.csv" in status      # many files in one request
     r = c.post("/api/studio/generate",
                data={"session_id": sid, "message": "power to mcu to sensor"})
     spec = r.json()["spec"]

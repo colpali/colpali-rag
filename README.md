@@ -250,6 +250,37 @@ with zero infrastructure (structure inferred from the request text); index a cor
 > Changing the frontend? `cd web && npm run dev` (hot-reload at :5173), or `npm run build` to
 > refresh the packaged `src/colpali_rag/studio/web_dist`. See **[docs/STUDIO.md](docs/STUDIO.md)**.
 
+## Use Open WebUI (or any OpenAI client) as the frontend
+
+`colpali-rag serve` exposes an **OpenAI-compatible** API at `/v1`, so a full-featured chat UI like
+[Open WebUI](https://github.com/open-webui/open-webui) can drive this project — retrieval is ColPali
+visual search, answers are read from the top page images and cited. Two "models" are exposed:
+`colpali-rag` (grounded Q&A) and `colpali-diagram` (returns a **Mermaid** diagram Open WebUI renders
+inline).
+
+```bash
+colpali-rag serve                         # 1. our OpenAI API →  http://localhost:8000/v1
+#   (optional) export VLM_BASE_URL=…      #    a vision endpoint gives written answers, not just page hits
+
+pip install open-webui && open-webui serve   # 2. Open WebUI at http://localhost:8080  (no npm; Docker also works)
+```
+
+3. In Open WebUI: **Settings → Admin → Connections → OpenAI API → +**, set the URL to
+   **`http://localhost:8000/v1`** and the API key to anything (it's ignored).
+4. Start a chat and pick **`colpali-rag`** or **`colpali-diagram`** from the model menu.
+
+Verify from a terminal:
+
+```bash
+curl http://localhost:8000/v1/models
+curl http://localhost:8000/v1/chat/completions -H 'content-type: application/json' \
+  -d '{"model":"colpali-rag","messages":[{"role":"user","content":"thermal derating curve?"}]}'
+```
+
+If Open WebUI runs in **Docker**, use `http://host.docker.internal:8000/v1` (macOS/Windows) instead
+of `localhost`. Works the same with LibreChat, Continue, the OpenAI SDK — anything that speaks the
+OpenAI API. (The interactive diagram canvas and heatmap views still live in `studio` / `serve`.)
+
 ## Documentation
 
 - **[docs/DEMO.md](docs/DEMO.md) — get a demo running in ~10 minutes (Windows, no Docker, no GPU):

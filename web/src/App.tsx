@@ -67,12 +67,12 @@ export default function App() {
   );
 
   const upload = useCallback(
-    async (file: File) => {
-      if (!sessionId) return;
+    async (files: File[]) => {
+      if (!sessionId || !files.length) return;
       setUploading(true);
       setError(null);
       try {
-        const r = await api.upload(sessionId, file);
+        const r = await api.upload(sessionId, files);
         setSession(r.session);
       } catch (e) {
         setError(e instanceof Error ? e.message : String(e));

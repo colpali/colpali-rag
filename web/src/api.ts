@@ -29,10 +29,10 @@ export const api = {
   sources: () =>
     fetch("/api/studio/sources").then(J<{ docs: DocInfo[]; pages: number; note?: string }>),
 
-  upload: (sessionId: string, file: File) => {
+  upload: (sessionId: string, files: File[]) => {
     const f = new FormData();
     f.append("session_id", sessionId);
-    f.append("file", file);
+    for (const file of files) f.append("files", file);
     return fetch("/api/studio/upload", { method: "POST", body: f }).then(
       J<{ status: string; session: SessionState }>,
     );

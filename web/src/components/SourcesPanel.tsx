@@ -21,7 +21,7 @@ export function SourcesPanel({
   onToggle: (doc: string) => void;
   onSelectAll: (all: boolean) => void;
   session: SessionState | null;
-  onUpload: (file: File) => void;
+  onUpload: (files: File[]) => void;
   uploading: boolean;
 }) {
   const fileRef = useRef<HTMLInputElement>(null);
@@ -103,8 +103,8 @@ export function SourcesPanel({
           onDrop={(e) => {
             e.preventDefault();
             setDrag(false);
-            const f = e.dataTransfer.files?.[0];
-            if (f) onUpload(f);
+            const fs = Array.from(e.dataTransfer.files || []);
+            if (fs.length) onUpload(fs);
           }}
           onClick={() => fileRef.current?.click()}
           className={`flex cursor-pointer flex-col items-center gap-1 rounded-lg border border-dashed px-3 py-4 text-center text-xs transition ${
@@ -117,17 +117,18 @@ export function SourcesPanel({
           ) : (
             <>
               <span className="text-slate-300">Drop CSV · Excel · notes</span>
-              <span className="text-slate-500">or click to browse</span>
+              <span className="text-slate-500">or click to browse — many at once</span>
             </>
           )}
           <input
             ref={fileRef}
             type="file"
             hidden
+            multiple
             accept=".csv,.tsv,.xlsx,.xlsm,.txt,.md,.json"
             onChange={(e) => {
-              const f = e.target.files?.[0];
-              if (f) onUpload(f);
+              const fs = Array.from(e.target.files || []);
+              if (fs.length) onUpload(fs);
               e.target.value = "";
             }}
           />
