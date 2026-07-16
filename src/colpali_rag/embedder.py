@@ -160,7 +160,8 @@ class ColpaliEmbedder:
             mask = (proc.get_local_image_mask(bimg) if hasattr(proc, "get_local_image_mask")
                     else proc.get_image_mask(bimg))
             n = int(mask.sum())
-            nx, ny = self._resolve_grid(proc, page_image.size, n)
+            nx, ny = self._resolve_grid(proc, bimg, page_image.size, n)
+            log.debug("heatmap grid nx=%d ny=%d for %d patch(es), page=%s", nx, ny, n, page_image.size)
             token_grids = self._compute_maps(proc, img_emb, q_emb, mask, (nx, ny), n)
         finally:
             if ip is not None and prev_split is not None:
@@ -183,19 +184,66 @@ class ColpaliEmbedder:
             out_maps[-1] = (acc / max(len(content), 1)).tolist()
         return content, out_maps
 
-    def _resolve_grid(self, proc, image_size, n_patches):
-        """(nx, ny) patch grid. Prefer the processor's get_n_patches when it agrees
-        with the real token count; else factor n_patches by nearest aspect ratio."""
-        if hasattr(proc, "get_n_patches"):
-            for extra in ({}, {"patch_size": getattr(proc, "patch_size", 14)},
-                          {"spatial_merge_size": getattr(proc, "spatial_merge_size", 2)}):
-                try:
-                    nx, ny = proc.get_n_patches(image_size, **extra)
-                    if nx * ny == n_patches:
-                        return nx, ny
-                except (TypeError, ValueError, AttributeError):
-                    continue
-        return self._grid_shape(n_patches, image_size)
+    def _resolve_grid(self, proc, batch, image_size, n_patches):
+        """(nx, ny) patch grid, oriented to the page. Resolution order:
+
+        1. Qwen family: the exact grid straight from the processed tensor (`image_grid_thw`).
+        2. the processor's own `get_n_patches` (the right *factor pair*, but processors disagree
+           on whether image_size is (w,h) or (h,w), so we re-orient in step 4).
+        3. else factor the patch count by aspect ratio.
+        4. orient the pair so nx/ny matches the page's width/height — this is what fixes the
+           transposed/scrambled heatmap when a processor's axis convention differs from PIL's.
+        """
+        W, H = image_size                                    # PIL .size == (width, height)
+        thw = self._maybe_thw(batch)
+        if thw is not None:                                  # (1) exact, already correctly oriented
+            h, w = thw
+            m = int(getattr(proc, "spatial_merge_size", 0)
+                    or getattr(getattr(proc, "image_processor", None), "merge_size", 0) or 2)
+            nx, ny = w // m, h // m
+            if nx > 0 and ny > 0 and nx * ny == n_patches:
+                return nx, ny
+        cand = None
+        if hasattr(proc, "get_n_patches"):                   # (2) trust the count, re-orient below
+            for sz in ((H, W), (W, H)):
+                for extra in ({"patch_size": getattr(proc, "patch_size", 14)},
+                              {"spatial_merge_size": getattr(proc, "spatial_merge_size", 2)}, {}):
+                    try:
+                        a, b = proc.get_n_patches(sz, **extra)
+                    except (TypeError, ValueError, AttributeError):
+                        continue
+                    if a * b == n_patches:
+                        cand = (a, b)
+                        break
+                if cand:
+                    break
+        if cand is None:                                     # (3) last resort
+            cand = self._grid_shape(n_patches, image_size)
+            log.debug("heatmap grid guessed by aspect for %d patch(es)", n_patches)
+        return self._orient(cand, W, H)                      # (4)
+
+    @staticmethod
+    def _maybe_thw(batch):
+        """(h, w) patch dims from a Qwen-family `image_grid_thw`, or None. thw rows are
+        (t, h, w) in pre-merge patch units for the actual image the model saw."""
+        thw = batch.get("image_grid_thw") if hasattr(batch, "get") else None
+        if thw is None:
+            return None
+        try:
+            row = thw[0].tolist() if hasattr(thw[0], "tolist") else list(thw[0])
+            return int(row[-2]), int(row[-1])
+        except (IndexError, TypeError, ValueError):
+            return None
+
+    @staticmethod
+    def _orient(grid, W, H) -> tuple[int, int]:
+        """Return the (nx, ny) orientation of a factor pair whose aspect (nx/ny) best matches
+        the page's width/height, so cols map to width and rows to height."""
+        a, b = grid
+        if a == b:
+            return a, b
+        target = (W / H) if H else 1.0
+        return (a, b) if abs(a / b - target) <= abs(b / a - target) else (b, a)
 
     def _compute_maps(self, proc, img_emb, q_emb, mask, n_patches, n):
         """Per-token grids of shape (ny, nx). Uses the processor sim-map method when

@@ -64,6 +64,23 @@ def test_grid_shape_matches_aspect():
     assert nx * ny == 48 and nx > ny
 
 
+def test_orient_fixes_transposed_heatmap_grid():
+    # the alignment fix: whichever order the processor hands us, the grid must end up with
+    # cols→width, rows→height (nx/ny ≈ page W/H). A wrong orientation scrambles the heatmap.
+    E = ColpaliEmbedder
+    assert E._orient((31, 20), 1000, 1400) == (20, 31)   # portrait page -> nx<ny
+    assert E._orient((20, 31), 1000, 1400) == (20, 31)   # already correct -> unchanged
+    assert E._orient((20, 31), 1400, 1000) == (31, 20)   # landscape page -> nx>ny
+    assert E._orient((27, 27), 1000, 1400) == (27, 27)   # square grid -> no-op
+
+
+def test_maybe_thw_reads_qwen_exact_grid():
+    E = ColpaliEmbedder
+    assert E._maybe_thw({"image_grid_thw": [[1, 40, 28]]}) == (40, 28)  # (h, w), pre-merge
+    assert E._maybe_thw({}) is None
+    assert E._maybe_thw({"image_grid_thw": None}) is None
+
+
 # --- store roundtrip with a fake embedder ---------------------------------
 class _FakeEmbedder:
     model_id = "fake/model"
