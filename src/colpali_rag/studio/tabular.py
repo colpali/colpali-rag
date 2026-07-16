@@ -144,18 +144,21 @@ def load_tables(name: str, data: bytes) -> list[Table]:
     return [load_csv(name, data)]
 
 
-def plan_table_text(table: "Table", request: str, *, max_rows: int = MAX_PREVIEW_ROWS,
-                    max_cols: int = MAX_COLS, max_cell: int = MAX_CELL) -> str:
-    """Request-aware model-facing rendering of one table.
+def plan_table(table: "Table", request: str, *, max_rows: int = MAX_PREVIEW_ROWS,
+               max_cols: int = MAX_COLS, max_cell: int = MAX_CELL, rank: bool = True):
+    """Request-aware model-facing rendering of one table. Returns (text, shown_source_rows).
 
-    A table that fits within the row budget is shown whole, in order (identical to summary()).
-    A table LARGER than the budget is ranked by lexical relevance to the request and the most
-    relevant rows are surfaced (labeled by source-file row), with an explicit omission audit — so
-    a huge multi-sheet workbook puts the RELEVANT rows in front of the model instead of just the
-    first N. The full table always reaches the constraint channel (the catalog compiler reads
-    table.rows untouched); this only shapes the prompt view."""
-    if table.total_rows <= max_rows or not str(request or "").strip():
-        return table.summary(max_rows=max_rows, max_cols=max_cols, max_cell=max_cell)
+    With rank=True, a table LARGER than the row budget is ranked by lexical relevance to the
+    request and the most relevant rows are surfaced (labeled by source-file row), with an explicit
+    omission audit — so a huge multi-sheet workbook puts the RELEVANT rows in front of the model
+    instead of just the first N. A table that fits (or rank=False, or a blank request) is shown in
+    order. The full table always reaches the constraint channel (the catalog compiler reads
+    table.rows untouched); this only shapes the prompt view. `shown_source_rows` is the list of
+    1-based source-file row numbers actually put in front of the model (for the run log)."""
+    if not rank or table.total_rows <= max_rows or not str(request or "").strip():
+        text = table.summary(max_rows=max_rows, max_cols=max_cols, max_cell=max_cell)
+        shown = [table.source_row(i) or (i + 1) for i in range(min(table.total_rows, max_rows))]
+        return text, shown
 
     from colpali_rag.lexical import LexicalIndex
 
@@ -173,7 +176,15 @@ def plan_table_text(table: "Table", request: str, *, max_rows: int = MAX_PREVIEW
              f"{len(sel)} most relevant to the request ({table.total_rows - len(sel)} not shown). "
              "Leading number = source-file row.",
              head, "-" * min(len(head), 80)]
+    shown = []
     for i in sel:
         rn = table.source_row(i) or (i + 1)
+        shown.append(rn)
         lines.append(f"{rn:>4}: " + " | ".join(_clip(c, max_cell) for c in table.rows[i][:max_cols]))
-    return "\n".join(lines)
+    return "\n".join(lines), shown
+
+
+def plan_table_text(table: "Table", request: str, *, max_rows: int = MAX_PREVIEW_ROWS,
+                    max_cols: int = MAX_COLS, max_cell: int = MAX_CELL) -> str:
+    """The model-facing text of plan_table() (which also returns the surfaced source rows)."""
+    return plan_table(table, request, max_rows=max_rows, max_cols=max_cols, max_cell=max_cell)[0]

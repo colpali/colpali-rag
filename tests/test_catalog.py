@@ -97,6 +97,19 @@ def test_plan_table_text_small_sheet_is_plain_summary():
     assert plan_table_text(t, "anything", max_rows=40) == t.summary(max_rows=40)   # fits -> unchanged
 
 
+def test_plan_table_returns_surfaced_source_rows():
+    from colpali_rag.studio.tabular import Table, plan_table
+
+    rows = [[f"item{i}", f"generic {i}"] for i in range(60)]
+    rows[50] = ["item50", "quantum flux"]
+    t = Table(name="b.csv", columns=["id", "desc"], rows=rows, total_rows=60,
+              row_numbers=list(range(2, 62)))
+    _text, shown = plan_table(t, "quantum flux", max_rows=5)
+    assert len(shown) == 5 and shown[0] == 52         # row 50 -> source row 52, surfaced first
+    _t2, shown2 = plan_table(t, "quantum flux", max_rows=5, rank=False)
+    assert shown2 == [2, 3, 4, 5, 6]                  # rank off -> first source rows in order
+
+
 def test_refine_trajectory_records_each_attempt(monkeypatch):
     from colpali_rag.studio import generate as gen
     from colpali_rag.studio.spec import Block, DiagramSpec

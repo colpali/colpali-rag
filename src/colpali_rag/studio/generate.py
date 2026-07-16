@@ -76,11 +76,12 @@ def collect_sources(request, *, store, selected_docs=None, tables=None, notes=No
 
     plan = getattr(settings, "tabular_plan", True) if settings is not None else True
     if tables:
-        from colpali_rag.studio.tabular import plan_table_text
+        from colpali_rag.studio.tabular import plan_table
     for t in tables or []:
-        text = plan_table_text(t, request, **caps) if plan else t.summary(**caps)
+        text, shown = plan_table(t, request, rank=plan, **caps)
         sources.append({"id": f"t{len(sources)+1}", "kind": "table", "ref": t.name,
-                        "label": t.name, "text": text, "total_rows": t.total_rows})
+                        "label": t.name, "text": text, "total_rows": t.total_rows,
+                        "shown_rows": shown})
     for nt in notes or []:
         sources.append({"id": f"n{len(sources)+1}", "kind": "note", "ref": nt.name,
                         "label": nt.name, "text": nt.summary()})
@@ -291,7 +292,7 @@ def build_run_summary(request, spec, sources) -> dict:
               "score": s.get("score"), "label": s.get("label")}
              for s in sources if s.get("kind") == "page"]
     tables = [{"id": s["id"], "name": s.get("ref") or s.get("label"),
-               "total_rows": s.get("total_rows")}
+               "total_rows": s.get("total_rows"), "shown_rows": s.get("shown_rows")}
               for s in sources if s.get("kind") == "table"]
     notes = [{"id": s["id"], "name": s.get("ref") or s.get("label")}
              for s in sources if s.get("kind") == "note"]
@@ -336,11 +337,21 @@ def format_run_summary(s: dict) -> str:
            f"mode    : {s['mode']} (structured={s['structured']})",
            f"studied : {st['n_pages']} page(s), {st['n_tables']} table(s), {st['n_notes']} note(s)"]
     out += [f"          · {p['label']}  (score {p.get('score')})" for p in st["pages"]]
-    out += [f"          · table {t['name']}" for t in st["tables"]]
+    for t in st["tables"]:
+        sr, tot = t.get("shown_rows") or [], t.get("total_rows")
+        if sr and tot and len(sr) < tot:
+            shown = ", ".join(map(str, sr[:12])) + ("…" if len(sr) > 12 else "")
+            detail = f" (surfaced source rows {shown} of {tot})"
+        else:
+            detail = f" ({tot} row(s))" if tot else ""
+        out.append(f"          · table {t['name']}{detail}")
     out.append(f"produced: {pr['n_blocks']} node(s), {pr['n_connections']} connection(s) — {pr['title']!r}")
     out += [f"          [{b['kind']}] {b['label']}" for b in pr["blocks"]]
     if c["repair_attempts"]:
         out.append(f"repair  : {c['repair_attempts']} re-prompt(s) to fix violations")
+    if c.get("refine_trajectory"):
+        traj = "  ".join(f"a{r['attempt']}:{r['violations']}v" for r in c["refine_trajectory"])
+        out.append(f"refine  : {traj}   (attempt:violations remaining)")
     flags = []
     if c["hallucinated_parts"]:
         flags.append(f"dropped {len(c['hallucinated_parts'])} off-catalog node(s): {', '.join(c['hallucinated_parts'])}")

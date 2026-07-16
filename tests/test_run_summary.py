@@ -45,6 +45,19 @@ def test_format_run_summary_is_readable():
     assert "missing required: CX-3" in txt
 
 
+def test_format_shows_surfaced_rows_and_trajectory():
+    from colpali_rag.studio.generate import build_run_summary, format_run_summary
+    from colpali_rag.studio.spec import Block, DiagramSpec
+
+    spec = DiagramSpec(title="D", blocks=[Block("a", "AX-100")], connections=[],
+                       refine_trajectory=[{"attempt": 0, "violations": 2}, {"attempt": 1, "violations": 0}])
+    sources = [{"id": "t1", "kind": "table", "ref": "big.csv", "label": "big.csv",
+                "total_rows": 500, "shown_rows": [316, 42, 7]}]
+    txt = format_run_summary(build_run_summary("draw", spec, sources))
+    assert "surfaced source rows 316, 42, 7 of 500" in txt
+    assert "refine  : a0:2v  a1:0v" in txt
+
+
 def test_run_log_written_when_dir_set(tmp_path):
     from colpali_rag.studio.generate import _write_run_log, build_run_summary
 

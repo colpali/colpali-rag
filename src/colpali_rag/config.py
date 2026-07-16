@@ -149,7 +149,8 @@ class Settings:
 
     # --- logging + per-generation run logs ---
     log_level: str = "INFO"                # DEBUG | INFO | WARNING | ERROR (the studio step trace is INFO)
-    run_log_dir: str = ""                  # if set, write a JSON + text summary of each studio run here
+    run_log_dir: str = "runs"              # write a JSON + text summary of each studio run here;
+    #                                        set COLPALI_RUN_LOG_DIR= (empty) to turn it off
 
     # --- server ---
     host: str = "127.0.0.1"
