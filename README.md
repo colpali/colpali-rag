@@ -53,6 +53,36 @@ colpali-rag info                # what model / store / index is configured
 
 ---
 
+## Run all three sites together
+
+Each runs on its own port, so open **three terminals** (same venv) and leave each running.
+Index once first: `colpali-rag index ./pdfs`.
+
+| Terminal | Command | Open | What it is |
+|----------|---------|------|------------|
+| 1 | `colpali-rag serve` | **http://localhost:8000** | **Search + heatmaps** — plain-language search; click a result to see, per query word, *where on the page* the model matched |
+| 2 | `colpali-rag studio` | **http://localhost:8100** | **Studio** — upload Excel/CSV, chat your requirements, get a cited diagram; export JSON / .drawio (XML) / Mermaid / summary |
+| 3 | `colpali-rag qdrant` | **http://localhost:6333/dashboard** | **Vector DB dashboard** — browse the Qdrant collection & vectors (no Docker, no npm) |
+
+```bash
+# terminal 1 — search + heatmaps
+colpali-rag serve                      # → http://localhost:8000
+
+# terminal 2 — studio (diagram GUI, ships prebuilt: no npm)
+colpali-rag studio                     # → http://localhost:8100
+
+# terminal 3 — local Qdrant + web dashboard
+colpali-rag qdrant                     # → http://localhost:6333/dashboard
+#   then, to point search/studio at Qdrant (optional): in terminals 1 & 2, before running,
+#   set COLPALI_STORE=qdrant and QDRANT_URL=http://localhost:6333   (Windows: `set VAR=value`)
+#   and run `colpali-rag migrate` once to copy existing embeddings in (no re-embedding).
+```
+
+Ports are configurable: `--port` on any command, or `COLPALI_PORT` / `COLPALI_STUDIO_PORT` in `.env`.
+`serve` and `studio` each load the model, so running both uses ~2× memory — fine on a workstation.
+
+---
+
 ## What you get in the UI
 
 1. **Search** in natural language across all indexed pages.

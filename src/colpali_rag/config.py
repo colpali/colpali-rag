@@ -154,7 +154,8 @@ class Settings:
 
     # --- server ---
     host: str = "127.0.0.1"
-    port: int = 8000
+    port: int = 8000                       # `serve` (search + heatmaps)
+    studio_port: int = 8100                # `studio` (diagram GUI) — distinct so both run at once
 
     @classmethod
     def from_env(cls) -> "Settings":
@@ -230,6 +231,7 @@ class Settings:
             run_log_dir=_env("COLPALI_RUN_LOG_DIR", cls.run_log_dir),
             host=_env("COLPALI_HOST", cls.host),
             port=_env_int("COLPALI_PORT", cls.port),
+            studio_port=_env_int("COLPALI_STUDIO_PORT", cls.studio_port),
         )
 
     @property

@@ -185,7 +185,7 @@ def serve(
 @app.command()
 def studio(
     host: Optional[str] = typer.Option(None, help="Bind host (default 127.0.0.1)"),
-    port: Optional[int] = typer.Option(None, help="Bind port (default 8000)"),
+    port: Optional[int] = typer.Option(None, help="Bind port (default 8100, so it runs alongside serve)"),
     model: Optional[str] = typer.Option(None), device: Optional[str] = typer.Option(None),
     store: Optional[str] = typer.Option(None), data_dir: Optional[str] = typer.Option(None),
     collection: Optional[str] = typer.Option(None), qdrant_url: Optional[str] = typer.Option(None),
@@ -204,10 +204,10 @@ def studio(
     os.environ["COLPALI_COLLECTION"] = s.collection
     if s.qdrant_url:
         os.environ["QDRANT_URL"] = s.qdrant_url
-    h, p = host or s.host, port or s.port
+    h, p = host or s.host, port or s.studio_port
     mode = "llm" if s.vlm_enabled else "demo"
     typer.secho(f"colpali-rag studio on http://{h}:{p}  (mode={mode}, store={s.store})", fg="magenta")
-    typer.echo("  dev UI: cd web && npm install && npm run dev   → http://localhost:5173")
+    typer.echo("  UI ships prebuilt — no npm needed. (frontend dev: cd web && npm run dev → :5173)")
     uvicorn.run("colpali_rag.studio.server:app", host=h, port=p)
 
 

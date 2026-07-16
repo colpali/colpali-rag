@@ -26,8 +26,11 @@ def test_settings_env_override(monkeypatch):
     monkeypatch.setenv("COLPALI_MODEL", "vidore/colqwen2-v1.0")
     monkeypatch.setenv("COLPALI_STORE", "qdrant")
     monkeypatch.setenv("COLPALI_PORT", "9001")
+    monkeypatch.setenv("COLPALI_STUDIO_PORT", "9100")
     s = Settings.from_env()
     assert s.model == "vidore/colqwen2-v1.0" and s.store == "qdrant" and s.port == 9001
+    assert s.studio_port == 9100                       # serve and studio have distinct default ports
+    assert Settings().port != Settings().studio_port   # so they can run together out of the box
 
 
 # --- pdf layer ------------------------------------------------------------
