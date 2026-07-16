@@ -142,3 +142,38 @@ def load_tables(name: str, data: bytes) -> list[Table]:
     if low.endswith(".xls"):
         raise RuntimeError("legacy .xls isn't supported — save as .xlsx or .csv")
     return [load_csv(name, data)]
+
+
+def plan_table_text(table: "Table", request: str, *, max_rows: int = MAX_PREVIEW_ROWS,
+                    max_cols: int = MAX_COLS, max_cell: int = MAX_CELL) -> str:
+    """Request-aware model-facing rendering of one table.
+
+    A table that fits within the row budget is shown whole, in order (identical to summary()).
+    A table LARGER than the budget is ranked by lexical relevance to the request and the most
+    relevant rows are surfaced (labeled by source-file row), with an explicit omission audit — so
+    a huge multi-sheet workbook puts the RELEVANT rows in front of the model instead of just the
+    first N. The full table always reaches the constraint channel (the catalog compiler reads
+    table.rows untouched); this only shapes the prompt view."""
+    if table.total_rows <= max_rows or not str(request or "").strip():
+        return table.summary(max_rows=max_rows, max_cols=max_cols, max_cell=max_cell)
+
+    from colpali_rag.lexical import LexicalIndex
+
+    idx = LexicalIndex([(str(i), " ".join(str(c) for c in row)) for i, row in enumerate(table.rows)])
+    sel = [int(i) for i, _ in idx.search(request, top_k=max_rows)]   # relevance-ranked row indices
+    if len(sel) < max_rows:                                          # top up with earliest rows
+        seen = set(sel)
+        sel += [i for i in range(table.total_rows) if i not in seen][:max_rows - len(sel)]
+    sel = sel[:max_rows]
+
+    cols = [_clip(c, max_cell) for c in table.columns[:max_cols]]
+    head = " | ".join(cols) if cols else "(no header)"
+    lines = [f"Table {table.name}" + (f" [sheet {table.sheet}]" if table.sheet else "")
+             + f" — {table.total_rows} row(s), {len(table.columns)} column(s); showing the "
+             f"{len(sel)} most relevant to the request ({table.total_rows - len(sel)} not shown). "
+             "Leading number = source-file row.",
+             head, "-" * min(len(head), 80)]
+    for i in sel:
+        rn = table.source_row(i) or (i + 1)
+        lines.append(f"{rn:>4}: " + " | ".join(_clip(c, max_cell) for c in table.rows[i][:max_cols]))
+    return "\n".join(lines)

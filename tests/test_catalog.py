@@ -77,6 +77,47 @@ def test_source_row_provenance():
     assert "4: BX-200 | 2" in s and "source-file row" in s   # rows labeled by their real source row
 
 
+def test_plan_table_text_surfaces_relevant_rows_of_a_huge_sheet():
+    from colpali_rag.studio.tabular import Table, plan_table_text
+
+    rows = [[f"item{i}", f"generic desc {i}"] for i in range(60)]
+    rows[50] = ["item50", "quantum flux capacitor"]                # the only relevant row, deep in the sheet
+    t = Table(name="big.csv", columns=["id", "desc"], rows=rows, total_rows=60,
+              row_numbers=list(range(2, 62)))
+    txt = plan_table_text(t, "quantum flux", max_rows=5)
+    assert "quantum flux capacitor" in txt                         # surfaced despite being row 50 of 60
+    assert "52: item50" in txt                                     # labeled by its real source row (2+50)
+    assert "most relevant to the request" in txt and "not shown" in txt
+
+
+def test_plan_table_text_small_sheet_is_plain_summary():
+    from colpali_rag.studio.tabular import load_csv, plan_table_text
+
+    t = load_csv("s.csv", b"a,b\n1,2\n3,4\n")
+    assert plan_table_text(t, "anything", max_rows=40) == t.summary(max_rows=40)   # fits -> unchanged
+
+
+def test_refine_trajectory_records_each_attempt(monkeypatch):
+    from colpali_rag.studio import generate as gen
+    from colpali_rag.studio.spec import Block, DiagramSpec
+
+    cat_table = _table("cat.csv", ["part_id"], [["AX-100"], ["BX-200"]])
+    calls = []
+
+    def fake_llm(request, page_images, sources, settings, *, mode="auto", max_retries=1, extra_note=""):
+        calls.append(1)
+        if len(calls) == 1:                                        # first draft hallucinates ZX-999
+            return DiagramSpec(title="T", blocks=[Block("a", "AX-100"), Block("z", "ZX-999")], connections=[])
+        return DiagramSpec(title="T", blocks=[Block("a", "AX-100"), Block("b", "BX-200")], connections=[])
+
+    monkeypatch.setattr(gen, "_llm_diagram", fake_llm)
+    spec, _ = gen.generate_diagram("draw", store=None, settings=_fake_settings(), tables=[cat_table])
+    traj = spec.refine_trajectory
+    assert len(traj) == 2
+    assert traj[0]["violations"] == 1 and traj[0]["dropped"] == 1  # attempt 0: one hallucinated node
+    assert traj[1]["violations"] == 0                             # attempt 1: converged
+
+
 # --------------------------------------------------------------------------- canon / tokens
 def test_canon_preserves_internal_id_punctuation():
     assert canon("(AX-1234)") == "ax-1234"            # surrounding punctuation stripped

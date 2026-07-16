@@ -116,6 +116,7 @@ class DiagramSpec:
     infeasible_connections: int = 0  # edges flagged: the two catalog items may not connect
     missing_required: list[str] = field(default_factory=list)     # required catalog ids absent from the output
     repair_attempts: int = 0         # how many times the model was re-prompted to fix violations
+    refine_trajectory: list[dict] = field(default_factory=list)   # per-attempt critic record (violations over time)
     withheld: bool = False           # True => abstained: output couldn't be grounded to the catalog
     errors: list[str] = field(default_factory=list)
 
@@ -143,6 +144,7 @@ class DiagramSpec:
             "infeasible_connections": self.infeasible_connections,
             "missing_required": self.missing_required,
             "repair_attempts": self.repair_attempts,
+            "refine_trajectory": self.refine_trajectory,
             "withheld": self.withheld,
         }
 

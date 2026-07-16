@@ -74,9 +74,13 @@ def collect_sources(request, *, store, selected_docs=None, tables=None, notes=No
             if len(page_images) >= top_k:
                 break
 
+    plan = getattr(settings, "tabular_plan", True) if settings is not None else True
+    if tables:
+        from colpali_rag.studio.tabular import plan_table_text
     for t in tables or []:
+        text = plan_table_text(t, request, **caps) if plan else t.summary(**caps)
         sources.append({"id": f"t{len(sources)+1}", "kind": "table", "ref": t.name,
-                        "label": t.name, "text": t.summary(**caps)})
+                        "label": t.name, "text": text, "total_rows": t.total_rows})
     for nt in notes or []:
         sources.append({"id": f"n{len(sources)+1}", "kind": "note", "ref": nt.name,
                         "label": nt.name, "text": nt.summary()})
@@ -286,7 +290,8 @@ def build_run_summary(request, spec, sources) -> dict:
     pages = [{"id": s["id"], "ref": s.get("ref"), "doc": s.get("doc"), "page": s.get("page"),
               "score": s.get("score"), "label": s.get("label")}
              for s in sources if s.get("kind") == "page"]
-    tables = [{"id": s["id"], "name": s.get("ref") or s.get("label")}
+    tables = [{"id": s["id"], "name": s.get("ref") or s.get("label"),
+               "total_rows": s.get("total_rows")}
               for s in sources if s.get("kind") == "table"]
     notes = [{"id": s["id"], "name": s.get("ref") or s.get("label")}
              for s in sources if s.get("kind") == "note"]
@@ -310,6 +315,7 @@ def build_run_summary(request, spec, sources) -> dict:
         "assumptions": list(spec.assumptions),
         "checks": {
             "repair_attempts": spec.repair_attempts,
+            "refine_trajectory": list(spec.refine_trajectory),
             "hallucinated_parts": list(spec.hallucinated_parts),
             "remapped_parts": list(spec.remapped_parts),
             "dropped_blocks": spec.dropped_blocks,
@@ -441,7 +447,7 @@ def generate_diagram(request, *, store, settings, selected_docs=None, tables=Non
 
     # model path: generate -> project -> (if violations remain) re-prompt with them -> repeat
     repair_max = max(0, int(getattr(settings, "catalog_repair_max", 1))) if active else 0
-    extra_note, spec, viol = "", None, None
+    extra_note, spec, viol, trajectory = "", None, None, []
     for attempt in range(repair_max + 1):
         log.info("generate: model call (attempt %d/%d)%s", attempt + 1, repair_max + 1,
                  " with a repair note" if extra_note else "")
@@ -459,11 +465,16 @@ def generate_diagram(request, *, store, settings, selected_docs=None, tables=Non
             return _finish(request, spec, sources, settings)
         viol = project(spec, catalog)
         spec.repair_attempts = attempt
-        log.info("generate: attempt %d -> %d violation(s) (dropped=%d, infeasible=%d, missing=%d)",
-                 attempt, violation_total(viol), viol["dropped"], len(viol["infeasible_edges"]),
-                 len(viol["missing"]))
+        record = {"attempt": attempt, "violations": violation_total(viol),
+                  "dropped": viol["dropped"], "infeasible": len(viol["infeasible_edges"]),
+                  "missing": len(viol["missing"]), "remapped": len(spec.remapped_parts),
+                  "nodes": len(spec.blocks)}
+        trajectory.append(record)
+        log.info("generate: critic attempt %d -> %s", attempt, record)
         if violation_total(viol) == 0 or attempt >= repair_max or spec.mode == "demo-fallback":
             break
         extra_note = _repair_note(viol)
+    if spec is not None:
+        spec.refine_trajectory = trajectory
     spec = apply_terminal_gate(spec, catalog, viol)
     return _finish(request, spec, sources, settings)

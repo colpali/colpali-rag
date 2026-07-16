@@ -135,6 +135,7 @@ class Settings:
     tabular_max_preview_rows: int = 40
     tabular_max_cols: int = 24
     tabular_max_cell: int = 80
+    tabular_plan: bool = True               # surface the rows most relevant to the request (huge sheets)
 
     # --- hybrid visual + lexical retrieval (optional; OFF by default) ---
     # Fuse the visual MaxSim ranking with a keyword ranking over extracted page text (RRF), so
@@ -217,6 +218,7 @@ class Settings:
             tabular_max_preview_rows=_env_int("TABULAR_MAX_PREVIEW_ROWS", cls.tabular_max_preview_rows),
             tabular_max_cols=_env_int("TABULAR_MAX_COLS", cls.tabular_max_cols),
             tabular_max_cell=_env_int("TABULAR_MAX_CELL", cls.tabular_max_cell),
+            tabular_plan=_env_bool("COLPALI_TABULAR_PLAN", cls.tabular_plan),
             hybrid_enabled=_env_bool("COLPALI_HYBRID_ENABLED", cls.hybrid_enabled),
             hybrid_kappa=_env_int("COLPALI_HYBRID_KAPPA", cls.hybrid_kappa),
             hybrid_fetch=_env_int("COLPALI_HYBRID_FETCH", cls.hybrid_fetch),
