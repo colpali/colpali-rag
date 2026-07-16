@@ -102,6 +102,15 @@ def test_memory_store_incremental_add(tmp_path):
     assert [pid for _r, _s, pid in reopened.search("q", top_k=2)] == [page_id("a.pdf", 2), page_id("b.pdf", 1)]
 
 
+def test_store_add_without_images_for_migration(tmp_path):
+    # migration path: append embeddings with images=None (images already on disk) — must not crash
+    recs, imgs = _pages_images()
+    store = MemoryStore(_FakeEmbedder(), str(tmp_path))
+    store.add(recs, imgs, [0.1, 0.9, 0.5])
+    store.add([Page("c.pdf", 1, "x")], None, [0.7])       # images=None -> skip re-persist
+    assert len(store) == 4 and store._embs[-1] == 0.7
+
+
 # --- api snippet helper ---------------------------------------------------
 def test_snippet_centers_on_match():
     from colpali_rag.app import _snippet

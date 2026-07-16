@@ -5,6 +5,7 @@
   colpali-rag serve             launch the visual web UI
   colpali-rag info              show the current index / settings
   colpali-rag doctor            index health check (identity + embedding unit-norm)
+  colpali-rag migrate           push an existing index into Qdrant (no re-embedding)
   colpali-rag eval <file>       measure retrieval accuracy on a labeled set
 """
 
@@ -66,6 +67,24 @@ def index(
                 fg="green")
     typer.echo(f"  model={info['model']} device={info['device']} text_coverage={info['text_coverage']}")
     typer.echo("  next: colpali-rag serve   (then open http://127.0.0.1:8000)")
+
+
+@app.command()
+def migrate(
+    qdrant_url: str = typer.Option("http://localhost:6333", help="Qdrant server URL"),
+    data_dir: Optional[str] = typer.Option(None), collection: Optional[str] = typer.Option(None),
+):
+    """Push an EXISTING on-disk index into Qdrant WITHOUT re-embedding.
+
+    Use this if you already ran `index` with the default store and now want the Qdrant dashboard:
+    it moves the vectors you already computed (the slow part is never repeated).
+    """
+    from colpali_rag.engine import migrate_index
+
+    s = _apply_overrides(get_settings(), None, None, "qdrant", data_dir, collection, qdrant_url)
+    migrate_index(s, progress=lambda m: typer.echo(m))
+    typer.secho(f"\n✓ migrated. Serve it with:  set COLPALI_STORE=qdrant  (QDRANT_URL={s.qdrant_url})  "
+                "then colpali-rag serve.\n  Dashboard: http://localhost:6333/dashboard", fg="green")
 
 
 @app.command()

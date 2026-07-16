@@ -182,6 +182,43 @@ def open_index(settings: Settings):
     return store, embedder
 
 
+def migrate_index(settings: Settings, progress=lambda m: None):
+    """Push an existing on-disk index into Qdrant WITHOUT re-embedding — it reuses the saved
+    embeddings (embeddings.pt) and page metadata, so the slow part is never repeated. Page images
+    are already on disk under the same data_dir, so they aren't re-copied. Requires QDRANT_URL."""
+    import json
+    import types
+
+    import torch
+
+    from colpali_rag.embedder import ColpaliEmbedder
+    from colpali_rag.store import QdrantStore
+
+    if not settings.qdrant_url:
+        raise ValueError("migrate needs a running Qdrant server — set QDRANT_URL "
+                         "(e.g. http://localhost:6333)")
+    d = Path(settings.data_dir)
+    rec_path, emb_path = d / "records.json", d / "embeddings.pt"
+    if not rec_path.exists() or not emb_path.exists():
+        raise FileNotFoundError(
+            f"no on-disk (in-memory) index at {settings.data_dir!r} to migrate — "
+            "run `colpali-rag index <pdf_dir>` first (default store), then migrate.")
+    meta = json.loads(rec_path.read_text())
+    records = [Page(**r) for r in meta["records"]]
+    embs = torch.load(emb_path, weights_only=False)
+    progress(f"loaded {len(records)} page(s) from {settings.data_dir} — no re-embedding")
+    # a tiny shim so we don't load the 1 GB model just to move vectors (page_to_list is static)
+    shim = types.SimpleNamespace(model_id=meta.get("model"), adapter=meta.get("adapter", ""),
+                                 page_to_list=ColpaliEmbedder.page_to_list)
+    dest = QdrantStore(shim, settings.data_dir, url=settings.qdrant_url,
+                       api_key=settings.qdrant_api_key, collection=settings.collection)
+    dest.add(records, None, embs)            # upload vectors; images already on disk
+    dest.save()
+    progress(f"migrated {len(records)} page(s) into Qdrant collection {settings.collection!r} at "
+             f"{settings.qdrant_url}")
+    return dest
+
+
 def _rrf(rankings, kappa: int, top_k: int):
     """Reciprocal Rank Fusion. rankings: list of id-lists (best-first). Returns [(id, score)]
     best-first. Needs no score calibration between channels — it fuses ranks, sidestepping the

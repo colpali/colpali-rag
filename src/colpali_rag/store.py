@@ -140,7 +140,8 @@ class MemoryStore(_Base):
         self.records.extend(recs)
         self._embs.extend(list(embs))
         self.ids.extend(page_id(r.doc, r.page) for r in recs)
-        self._persist_images(recs, images)
+        if images:                                  # None => images already on disk (migration)
+            self._persist_images(recs, images)
         return self
 
     def search(self, query: str, top_k: int = 12):
@@ -241,7 +242,8 @@ class QdrantStore(_Base):
         new_ids = [page_id(r.doc, r.page) for r in recs]
         self.records.extend(recs)
         self.ids.extend(new_ids)
-        self._persist_images(recs, images)
+        if images:                                  # None => images already on disk (migration)
+            self._persist_images(recs, images)
         points = [qm.PointStruct(id=start + i, vector={"original": self.embedder.page_to_list(e)},
                                  payload={"doc": r.doc, "page": r.page, "text": r.text, "page_id": pid})
                   for i, (r, e, pid) in enumerate(zip(recs, embs, new_ids))]
