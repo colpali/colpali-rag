@@ -13,6 +13,7 @@ export function SourcesPanel({
   session,
   onUpload,
   uploading,
+  onCollapse,
 }: {
   status: StudioStatus | null;
   docs: DocInfo[];
@@ -23,6 +24,7 @@ export function SourcesPanel({
   session: SessionState | null;
   onUpload: (files: File[]) => void;
   uploading: boolean;
+  onCollapse?: () => void;
 }) {
   const fileRef = useRef<HTMLInputElement>(null);
   const [drag, setDrag] = useState(false);
@@ -30,7 +32,7 @@ export function SourcesPanel({
 
   return (
     <aside className="flex h-full w-[300px] shrink-0 flex-col border-r border-ink-600 bg-ink-900/60">
-      <Header />
+      <Header onCollapse={onCollapse} />
 
       {status && (
         <div className="flex items-center gap-2 px-4 pb-3 text-xs text-slate-400">
@@ -156,18 +158,21 @@ export function SourcesPanel({
   );
 }
 
-function Header() {
+function Header({ onCollapse }: { onCollapse?: () => void }) {
   return (
     <div className="flex items-center gap-2.5 px-4 pb-2 pt-4">
       <div className="grid h-8 w-8 place-items-center rounded-lg bg-gradient-to-br from-brand/30 to-brand-2/25 text-brand">
         <Icon icon="diagram-tree" size={16} />
       </div>
-      <div>
+      <div className="min-w-0 flex-1">
         <div className="text-sm font-semibold leading-tight text-slate-100">Studio</div>
         <div className="font-mono text-[10px] uppercase tracking-[0.16em] text-slate-500">
           ColPali · grounded
         </div>
       </div>
+      {onCollapse && (
+        <Button variant="minimal" small icon="chevron-left" title="Collapse" onClick={onCollapse} />
+      )}
     </div>
   );
 }

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import { Button, Icon } from "@blueprintjs/core";
 import { SourcesPanel } from "./components/SourcesPanel";
 import { ChatPanel, type Msg } from "./components/ChatPanel";
 import { DiagramCanvas } from "./components/DiagramCanvas";
@@ -17,6 +18,8 @@ export default function App() {
   const [loading, setLoading] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [showSources, setShowSources] = useState(true);
+  const [showChat, setShowChat] = useState(true);
 
   useEffect(() => {
     api.status().then(setStatus).catch(() => setStatus(null));
@@ -85,23 +88,33 @@ export default function App() {
 
   return (
     <div className="flex h-screen w-screen overflow-hidden">
-      <SourcesPanel
-        status={status}
-        docs={docs}
-        indexNote={indexNote}
-        selected={selected}
-        onToggle={toggleDoc}
-        onSelectAll={selectAll}
-        session={session}
-        onUpload={upload}
-        uploading={uploading}
-      />
-      <ChatPanel
-        messages={messages}
-        onSend={send}
-        loading={loading}
-        mode={status?.mode ?? "demo"}
-      />
+      {showSources ? (
+        <SourcesPanel
+          status={status}
+          docs={docs}
+          indexNote={indexNote}
+          selected={selected}
+          onToggle={toggleDoc}
+          onSelectAll={selectAll}
+          session={session}
+          onUpload={upload}
+          uploading={uploading}
+          onCollapse={() => setShowSources(false)}
+        />
+      ) : (
+        <ReopenRail icon="database" title="Show sources" onClick={() => setShowSources(true)} />
+      )}
+      {showChat ? (
+        <ChatPanel
+          messages={messages}
+          onSend={send}
+          loading={loading}
+          mode={status?.mode ?? "demo"}
+          onCollapse={() => setShowChat(false)}
+        />
+      ) : (
+        <ReopenRail icon="chat" title="Show chat" onClick={() => setShowChat(true)} />
+      )}
       <main className="relative min-w-0 flex-1">
         <DiagramCanvas spec={spec} sessionId={sessionId} loading={loading} />
         {error && (
@@ -110,6 +123,23 @@ export default function App() {
           </div>
         )}
       </main>
+    </div>
+  );
+}
+
+function ReopenRail({
+  icon,
+  title,
+  onClick,
+}: {
+  icon: "database" | "chat";
+  title: string;
+  onClick: () => void;
+}) {
+  return (
+    <div className="flex h-full w-9 shrink-0 flex-col items-center gap-2 border-r border-ink-600 bg-ink-900/60 pt-3">
+      <Button variant="minimal" small icon={icon} title={title} onClick={onClick} />
+      <Icon icon="chevron-right" size={12} className="text-slate-600" />
     </div>
   );
 }

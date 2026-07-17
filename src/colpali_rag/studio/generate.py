@@ -139,51 +139,86 @@ def _repair_note(viol) -> str:
             + " Return corrected JSON using ONLY items that appear in the attached table(s).")
 
 
+def _err_body(e) -> str:
+    """A short snippet of an HTTP error's response body — the part that says WHY (model not found,
+    no vision support, bad param). This is what turns a silent demo-fallback into a fixable error."""
+    try:
+        r = getattr(e, "response", None)
+        t = (r.text or "").strip() if r is not None else ""
+        return (" — " + " ".join(t.split())[:220]) if t else ""
+    except Exception:  # noqa: BLE001
+        return ""
+
+
+def _diagram_content(head, page_images, sources, with_images):
+    """The chat message content. with_images=True sends page images (needs a vision model);
+    with_images=False sends a text-only prompt (page labels + the full table/note text) so a
+    text-only model or gateway still gets your Excels and can produce a diagram."""
+    from colpali_rag.generator import _image_data_uri
+
+    content = [{"type": "text", "text": head}]
+    if with_images:
+        for i, im in enumerate(page_images, start=1):
+            content.append({"type": "text", "text": f"[{i}] page image:"})
+            content.append({"type": "image_url", "image_url": {"url": _image_data_uri(im)}})
+    else:
+        for i, s in enumerate([s for s in sources if s.get("kind") == "page"], start=1):
+            content.append({"type": "text", "text": f"[{i}] page: {s.get('label', '')}"})
+    stext = _sources_text(sources)
+    if stext:
+        content.append({"type": "text", "text": "Tables / notes:\n" + stext})
+    return content
+
+
 def _llm_diagram(request, page_images, sources, settings, *, mode="auto", max_retries=1,
                  extra_note=""):
-    from colpali_rag.generator import _image_data_uri, _post_chat
+    from colpali_rag.generator import _post_chat
     import httpx
 
     head = _INSTR + f"\n\nRequest: {request}"
     if extra_note:
         head += "\n\n" + extra_note
-    content = [{"type": "text", "text": head}]
-    for i, im in enumerate(page_images, start=1):
-        content.append({"type": "text", "text": f"[{i}] page image:"})
-        content.append({"type": "image_url", "image_url": {"url": _image_data_uri(im)}})
-    stext = _sources_text(sources)
-    if stext:
-        content.append({"type": "text", "text": "Tables / notes:\n" + stext})
-    messages = [{"role": "user", "content": content}]
-
     tiers = _TIERS if mode == "auto" else [mode]
-    raw, errs = "", []
-    for tier in tiers:
-        for attempt in range(max_retries + 1):
-            msgs = messages if attempt == 0 else messages + [
-                {"role": "assistant", "content": raw},
-                {"role": "user", "content": "That was not valid. Return ONLY JSON matching the shape. "
-                 + "; ".join(errs[-2:])}]
-            try:
-                data = _post_chat(settings.vlm_base_url, settings.vlm_api_key, settings.vlm_model,
-                                  msgs, response_format=_response_format(tier),
-                                  max_tokens=1600, timeout=180.0)
-            except httpx.HTTPStatusError as e:
-                sc = e.response.status_code if e.response is not None else 0
-                if sc in (400, 422):
-                    errs.append(f"{tier}: HTTP {sc}")
-                    break
-                raise
-            raw = (data["choices"][0]["message"].get("content") or "").strip()
-            obj = parse_diagram(raw)
-            if obj is not None:
+    errs: list[str] = []
+
+    # Pass 1 sends page images (vision). If that fails at the endpoint, pass 2 retries text-only
+    # (labels + full table/note text) — so a text-only model/gateway still produces a diagram from
+    # your Excels instead of silently collapsing to the demo.
+    passes = [True, False] if page_images else [False]
+    for with_images in passes:
+        content = _diagram_content(head, page_images, sources, with_images)
+        messages = [{"role": "user", "content": content}]
+        tag = "vision" if with_images else "text-only"
+        raw = ""
+        for tier in tiers:
+            for attempt in range(max_retries + 1):
+                msgs = messages if attempt == 0 else messages + [
+                    {"role": "assistant", "content": raw},
+                    {"role": "user", "content": "That was not valid. Return ONLY JSON matching the "
+                     "shape. " + "; ".join(errs[-2:])}]
                 try:
-                    return validate_diagram_obj(obj, sources, mode=tier)
-                except Exception as ve:  # noqa: BLE001 - shape error -> retry / next tier
-                    errs.append(f"{tier}: {ve}")
-    spec = _demo_diagram(request, sources)     # never fail to produce a diagram
+                    data = _post_chat(settings.vlm_base_url, settings.vlm_api_key, settings.vlm_model,
+                                      msgs, response_format=_response_format(tier),
+                                      max_tokens=1600, timeout=180.0)
+                except httpx.HTTPStatusError as e:
+                    sc = e.response.status_code if e.response is not None else 0
+                    errs.append(f"{tag}/{tier}: HTTP {sc}{_err_body(e)}")
+                    break                                    # this tier failed at the endpoint
+                except httpx.HTTPError as e:                 # transport/timeout — record and move on
+                    errs.append(f"{tag}/{tier}: {type(e).__name__}: {e}")
+                    break
+                raw = (data["choices"][0]["message"].get("content") or "").strip()
+                obj = parse_diagram(raw)
+                if obj is not None:
+                    try:
+                        return validate_diagram_obj(obj, sources,
+                                                    mode=tier if with_images else f"{tier}-text")
+                    except Exception as ve:  # noqa: BLE001 - shape error -> retry / next tier
+                        errs.append(f"{tag}/{tier}: {ve}")
+
+    spec = _demo_diagram(request, sources)     # never fail to produce *a* diagram…
     spec.mode = "demo-fallback"
-    spec.errors = errs
+    spec.errors = errs or ["the answer model returned no usable response"]   # …but say why
     return spec
 
 

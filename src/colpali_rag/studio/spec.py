@@ -146,6 +146,7 @@ class DiagramSpec:
             "repair_attempts": self.repair_attempts,
             "refine_trajectory": self.refine_trajectory,
             "withheld": self.withheld,
+            "errors": self.errors,
         }
 
 

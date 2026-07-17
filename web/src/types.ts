@@ -51,6 +51,7 @@ export interface Spec {
   mode: string;
   hallucinated_citations: number[];
   dropped_connections: number;
+  errors?: string[];
 }
 
 export interface DiagramResponse {

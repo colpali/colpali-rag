@@ -11,7 +11,7 @@ import {
   type NodeTypes,
   type ReactFlowInstance,
 } from "@xyflow/react";
-import { AnchorButton, ButtonGroup, Icon, Tag } from "@blueprintjs/core";
+import { AnchorButton, ButtonGroup, Callout, Icon, Tag } from "@blueprintjs/core";
 import { BlockNode } from "./BlockNode";
 import { KIND_COLOR, specToFlow, type BlockNodeData, type FlowNode } from "../lib/flow";
 import { api } from "../api";
@@ -81,6 +81,8 @@ export function DiagramCanvas({
         </div>
       )}
 
+      {spec && <SpecBanner spec={spec} />}
+
       {!spec && !loading && <EmptyState />}
       {loading && !spec && <EmptyState thinking />}
 
@@ -129,6 +131,45 @@ function ExportBtn({
     <AnchorButton href={api.exportUrl(sid, fmt)} variant="outlined" small icon={<Icon icon={icon} size={12} />}>
       {label}
     </AnchorButton>
+  );
+}
+
+function SpecBanner({ spec }: { spec: Spec }) {
+  const fallback = spec.mode === "demo-fallback"; // model was called but failed
+  const demo = spec.mode === "demo"; // no model configured at all
+  if (!fallback && !demo) return null;
+  const reasons = (spec.errors ?? []).slice(0, 3);
+  return (
+    <div className="pointer-events-none absolute bottom-4 left-1/2 z-20 w-[min(600px,92%)] -translate-x-1/2">
+      <Callout
+        intent={fallback ? "danger" : "primary"}
+        icon={fallback ? "warning-sign" : "info-sign"}
+        title={
+          fallback
+            ? "The answer model failed — this is a rough keyword sketch, not a real diagram"
+            : "No answer model configured — showing a rough demo"
+        }
+        className="pointer-events-auto !bg-ink-800/95 text-xs shadow-2xl"
+      >
+        {fallback ? (
+          <>
+            The model was called but rejected the request. Fix the cause below, then regenerate:
+            {reasons.length > 0 && (
+              <ul className="mt-1.5 space-y-0.5 break-words font-mono text-[11px] text-rose-200">
+                {reasons.map((e, i) => (
+                  <li key={i}>• {e}</li>
+                ))}
+              </ul>
+            )}
+          </>
+        ) : (
+          <>
+            Set <code>VLM_BASE_URL</code> to a vision model so it actually reads your pages and
+            Excels.
+          </>
+        )}
+      </Callout>
+    </div>
   );
 }
 

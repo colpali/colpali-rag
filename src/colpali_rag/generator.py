@@ -38,8 +38,13 @@ def _post_chat(base_url, api_key, model, messages, *, response_format=None,
     headers = {"Content-Type": "application/json"}
     if api_key:
         headers["Authorization"] = f"Bearer {api_key}"
-    resp = httpx.post(base_url.rstrip("/") + "/chat/completions",
-                      json=payload, headers=headers, timeout=timeout)
+    url = base_url.rstrip("/") + "/chat/completions"
+    resp = httpx.post(url, json=payload, headers=headers, timeout=timeout)
+    # some endpoints (newer OpenAI / Azure) reject `max_tokens` and want `max_completion_tokens`.
+    if resp.status_code == 400 and "max_tokens" in (resp.text or "").lower():
+        payload.pop("max_tokens", None)
+        payload["max_completion_tokens"] = max_tokens
+        resp = httpx.post(url, json=payload, headers=headers, timeout=timeout)
     resp.raise_for_status()
     return resp.json()
 

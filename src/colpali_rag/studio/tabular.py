@@ -71,10 +71,14 @@ def _clip(v, max_cell: int = MAX_CELL) -> str:
     return s[:max_cell] + ("…" if len(s) > max_cell else "")
 
 
-def _from_matrix(name: str, matrix: list[list], sheet: str | None = None) -> Table:
-    # keep each non-empty row's ORIGINAL 1-based position, so citations point at the real source row
-    numbered = [(i, row) for i, row in enumerate(matrix, start=1)
-                if any(c not in (None, "") for c in row)]
+def _numbered(matrix: list[list]) -> list[tuple[int, list]]:
+    """Non-empty rows as (1-based SOURCE row number, row). Blank rows drop out, leaving gaps in
+    the numbering — which is how we later detect section breaks."""
+    return [(i, row) for i, row in enumerate(matrix, start=1)
+            if any(c not in (None, "") for c in row)]
+
+
+def _table_from_numbered(name: str, numbered: list[tuple[int, list]], sheet: str | None = None) -> Table:
     if not numbered:
         return Table(name=name, columns=[], rows=[], total_rows=0, sheet=sheet, note="empty")
     header = [_norm(c) for c in numbered[0][1]]            # full width, uncapped
@@ -82,6 +86,28 @@ def _from_matrix(name: str, matrix: list[list], sheet: str | None = None) -> Tab
     rows = [[_norm(c) for c in row] for _, row in body]    # full rows, full cells, uncapped
     return Table(name=name, columns=header, rows=rows, total_rows=len(body),
                  row_numbers=[n for n, _ in body], sheet=sheet)
+
+
+def _split_sections(numbered: list[tuple[int, list]]) -> list[list[tuple[int, list]]]:
+    """Split rows into sections wherever ≥1 blank source rows separate them (a gap in the row
+    numbers). One contiguous block => a single section (behavior unchanged for normal sheets)."""
+    sections: list[list] = []
+    cur: list = []
+    prev = None
+    for n, row in numbered:
+        if prev is not None and n != prev + 1 and cur:    # a blank row broke the run -> new section
+            sections.append(cur)
+            cur = []
+        cur.append((n, row))
+        prev = n
+    if cur:
+        sections.append(cur)
+    return sections
+
+
+def _from_matrix(name: str, matrix: list[list], sheet: str | None = None) -> Table:
+    """One Table from a matrix (CSV / single-block dispatch). Original 1-based row numbers kept."""
+    return _table_from_numbered(name, _numbered(matrix), sheet=sheet)
 
 
 def load_csv(name: str, data: bytes) -> Table:
@@ -109,10 +135,23 @@ def _read_xlsx(data: bytes):
 
 
 def load_xlsx_sheets(name: str, data: bytes) -> list[Table]:
-    """Every non-empty worksheet as its own Table. A multi-sheet workbook must contribute
-    ALL of its sheets to the constraint channel — the vocabulary compiler scans every table —
-    so we never silently drop the sheet the catalog happens to live on."""
-    tables = [_from_matrix(name, matrix, sheet=title) for title, matrix in _read_xlsx(data)]
+    """Every worksheet as Table(s). Two things matter for real workbooks:
+
+    * ALL sheets contribute (the vocabulary compiler scans every table), so we never drop the
+      sheet a catalog lives on.
+    * A sheet that STACKS several sections (blank-row-separated blocks — e.g. a cable schedule with
+      multiple cable groups on one sheet, each with its own header) is split into one Table PER
+      section, each with its own header and its real source-row numbers. Otherwise the whole sheet
+      collapses into a single mangled table (first row treated as the only header) that neither the
+      model nor the catalog can read."""
+    tables: list[Table] = []
+    for title, matrix in _read_xlsx(data):
+        sections = _split_sections(_numbered(matrix))
+        if len(sections) <= 1:
+            tables.append(_table_from_numbered(name, sections[0] if sections else [], sheet=title))
+        else:
+            for k, sec in enumerate(sections, start=1):
+                tables.append(_table_from_numbered(name, sec, sheet=f"{title} · section {k}"))
     tables = [t for t in tables if t.total_rows or t.columns]
     return tables or [Table(name=name, columns=[], rows=[], total_rows=0, note="empty")]
 

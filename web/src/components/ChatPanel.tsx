@@ -19,11 +19,13 @@ export function ChatPanel({
   onSend,
   loading,
   mode,
+  onCollapse,
 }: {
   messages: Msg[];
   onSend: (text: string) => void;
   loading: boolean;
   mode: "llm" | "demo";
+  onCollapse?: () => void;
 }) {
   const [text, setText] = useState("");
   const endRef = useRef<HTMLDivElement>(null);
@@ -45,9 +47,14 @@ export function ChatPanel({
         <h3 className="font-mono text-[10px] uppercase tracking-[0.16em] text-slate-500">
           Conversation
         </h3>
-        <span className="font-mono text-[10px] text-slate-600">
-          {mode === "llm" ? "reads sources" : "text-only demo"}
-        </span>
+        <div className="flex items-center gap-2">
+          <span className="font-mono text-[10px] text-slate-600">
+            {mode === "llm" ? "reads sources" : "text-only demo"}
+          </span>
+          {onCollapse && (
+            <Button variant="minimal" small icon="chevron-left" title="Collapse" onClick={onCollapse} />
+          )}
+        </div>
       </div>
 
       <div className="flex-1 space-y-3 overflow-y-auto px-4 py-4">
