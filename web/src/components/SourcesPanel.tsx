@@ -13,7 +13,6 @@ export function SourcesPanel({
   session,
   onUpload,
   uploading,
-  onCollapse,
 }: {
   status: StudioStatus | null;
   docs: DocInfo[];
@@ -24,26 +23,16 @@ export function SourcesPanel({
   session: SessionState | null;
   onUpload: (files: File[]) => void;
   uploading: boolean;
-  onCollapse?: () => void;
 }) {
   const fileRef = useRef<HTMLInputElement>(null);
   const [drag, setDrag] = useState(false);
   const allOn = selected.length === 0; // empty selection => all datasheets apply
 
   return (
-    <aside className="flex h-full w-[300px] shrink-0 flex-col border-r border-ink-600 bg-ink-900/60">
-      <Header onCollapse={onCollapse} />
-
-      {status && (
-        <div className="flex items-center gap-2 px-4 pb-3 text-xs text-slate-400">
-          <span
-            className={`h-2 w-2 rounded-full ${status.mode === "llm" ? "bg-emerald-400" : "bg-brand"}`}
-          />
-          {status.mode === "llm" ? "model connected" : "demo mode"}
-          <span className="text-slate-600">·</span>
-          {status.pages} page{status.pages === 1 ? "" : "s"} indexed
-        </div>
-      )}
+    <aside className="flex h-full w-[280px] shrink-0 flex-col overflow-y-auto border-r border-ink-600 bg-ink-900/60">
+      <div className="px-4 pb-1 pt-4 font-mono text-[10px] uppercase tracking-[0.18em] text-slate-500">
+        Sources
+      </div>
 
       <Section
         title="Datasheets"
@@ -115,11 +104,11 @@ export function SourcesPanel({
         >
           <Icon icon="upload" size={16} className={drag ? "text-brand" : "text-slate-500"} />
           {uploading ? (
-            "uploading…"
+            "uploading..."
           ) : (
             <>
-              <span className="text-slate-300">Drop CSV · Excel · notes</span>
-              <span className="text-slate-500">or click to browse — many at once</span>
+              <span className="text-slate-300">Drop CSV, Excel, notes</span>
+              <span className="text-slate-500">or click to browse (many at once)</span>
             </>
           )}
           <input
@@ -155,25 +144,6 @@ export function SourcesPanel({
         empty selection uses all.
       </div>
     </aside>
-  );
-}
-
-function Header({ onCollapse }: { onCollapse?: () => void }) {
-  return (
-    <div className="flex items-center gap-2.5 px-4 pb-2 pt-4">
-      <div className="grid h-8 w-8 place-items-center rounded-lg bg-gradient-to-br from-brand/30 to-brand-2/25 text-brand">
-        <Icon icon="diagram-tree" size={16} />
-      </div>
-      <div className="min-w-0 flex-1">
-        <div className="text-sm font-semibold leading-tight text-slate-100">Studio</div>
-        <div className="font-mono text-[10px] uppercase tracking-[0.16em] text-slate-500">
-          ColPali · grounded
-        </div>
-      </div>
-      {onCollapse && (
-        <Button variant="minimal" small icon="chevron-left" title="Collapse" onClick={onCollapse} />
-      )}
-    </div>
   );
 }
 

@@ -19,13 +19,11 @@ export function ChatPanel({
   onSend,
   loading,
   mode,
-  onCollapse,
 }: {
   messages: Msg[];
   onSend: (text: string) => void;
   loading: boolean;
   mode: "llm" | "demo";
-  onCollapse?: () => void;
 }) {
   const [text, setText] = useState("");
   const endRef = useRef<HTMLDivElement>(null);
@@ -42,19 +40,14 @@ export function ChatPanel({
   };
 
   return (
-    <section className="flex h-full w-[380px] shrink-0 flex-col border-r border-ink-600 bg-ink-950/40">
+    <section className="flex h-full w-[340px] shrink-0 flex-col border-r border-ink-600 bg-ink-950/40">
       <div className="flex items-center justify-between border-b border-ink-600/60 px-4 py-3">
         <h3 className="font-mono text-[10px] uppercase tracking-[0.16em] text-slate-500">
           Conversation
         </h3>
-        <div className="flex items-center gap-2">
-          <span className="font-mono text-[10px] text-slate-600">
-            {mode === "llm" ? "reads sources" : "text-only demo"}
-          </span>
-          {onCollapse && (
-            <Button variant="minimal" small icon="chevron-left" title="Collapse" onClick={onCollapse} />
-          )}
-        </div>
+        <span className="font-mono text-[10px] text-slate-600">
+          {mode === "llm" ? "reads sources" : "text-only demo"}
+        </span>
       </div>
 
       <div className="flex-1 space-y-3 overflow-y-auto px-4 py-4">
@@ -111,7 +104,7 @@ export function ChatPanel({
             fill
             autoResize
             rows={1}
-            placeholder="Describe what you want — e.g. how the parts connect…"
+            placeholder="Describe what you want, e.g. how the parts connect"
             className="!max-h-32 !min-h-[38px] text-[13px]"
           />
           <Button

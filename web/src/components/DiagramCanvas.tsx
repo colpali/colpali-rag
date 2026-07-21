@@ -1,8 +1,7 @@
-import { useCallback, useEffect, useMemo, useRef } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Background,
   BackgroundVariant,
-  Controls,
   MiniMap,
   ReactFlow,
   useEdgesState,
@@ -11,7 +10,7 @@ import {
   type NodeTypes,
   type ReactFlowInstance,
 } from "@xyflow/react";
-import { AnchorButton, ButtonGroup, Callout, Icon, Tag } from "@blueprintjs/core";
+import { AnchorButton, Button, ButtonGroup, Callout, Icon, Tag } from "@blueprintjs/core";
 import { BlockNode } from "./BlockNode";
 import { KIND_COLOR, specToFlow, type BlockNodeData, type FlowNode } from "../lib/flow";
 import { api } from "../api";
@@ -30,27 +29,33 @@ export function DiagramCanvas({
   const [nodes, setNodes, onNodesChange] = useNodesState<FlowNode>([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([]);
   const inst = useRef<ReactFlowInstance<FlowNode, Edge> | null>(null);
+  const [zoom, setZoom] = useState(1);
 
   useEffect(() => {
     if (!spec) return;
     const { nodes: n, edges: e } = specToFlow(spec);
     setNodes(n);
     setEdges(e);
-    const t = setTimeout(() => inst.current?.fitView({ padding: 0.2, duration: 400 }), 60);
+    const t = setTimeout(() => inst.current?.fitView({ padding: 0.22, duration: 400 }), 60);
     return () => clearTimeout(t);
   }, [spec, setNodes, setEdges]);
 
   const onInit = useCallback((i: ReactFlowInstance<FlowNode, Edge>) => {
     inst.current = i;
+    setZoom(i.getZoom());
   }, []);
+
+  const fit = () => inst.current?.fitView({ padding: 0.22, duration: 300 });
+  const zoomIn = () => inst.current?.zoomIn({ duration: 200 });
+  const zoomOut = () => inst.current?.zoomOut({ duration: 200 });
 
   const warn = spec && (spec.hallucinated_citations.length > 0 || spec.dropped_connections > 0);
 
   return (
     <div className="relative h-full w-full">
       {spec && (
-        <div className="pointer-events-none absolute left-4 top-4 z-10 flex items-center gap-2">
-          <h2 className="pointer-events-auto max-w-[42vw] truncate text-lg font-semibold text-slate-100">
+        <div className="pointer-events-none absolute left-4 top-4 z-10 flex max-w-[calc(100%-2rem)] items-center gap-2">
+          <h2 className="pointer-events-auto max-w-[38vw] truncate text-lg font-semibold text-slate-100">
             {spec.title}
           </h2>
           <Tag
@@ -93,15 +98,17 @@ export function DiagramCanvas({
         onEdgesChange={onEdgesChange}
         nodeTypes={nodeTypes}
         onInit={onInit}
+        onMove={(_, vp) => setZoom(vp.zoom)}
         fitView
-        fitViewOptions={{ padding: 0.2 }}
-        minZoom={0.2}
-        maxZoom={2}
+        fitViewOptions={{ padding: 0.22 }}
+        minZoom={0.1}
+        maxZoom={2.5}
+        panOnScroll
+        selectionOnDrag
         proOptions={{ hideAttribution: true }}
         className="bg-transparent"
       >
         <Background variant={BackgroundVariant.Dots} gap={22} size={1} color="#1e3d5a" />
-        <Controls showInteractive={false} />
         <MiniMap
           pannable
           zoomable
@@ -112,6 +119,27 @@ export function DiagramCanvas({
           maskColor="rgba(10,26,43,0.75)"
         />
       </ReactFlow>
+
+      {/* Clear, always-visible zoom controls (bottom-left) so the canvas is easy to navigate */}
+      {spec && (
+        <div className="absolute bottom-4 left-4 z-10">
+          <ButtonGroup>
+            <Button variant="outlined" icon="zoom-out" onClick={zoomOut} title="Zoom out" />
+            <Button
+              variant="outlined"
+              onClick={fit}
+              title="Reset to fit"
+              className="!min-w-[54px] !font-mono !text-xs !tabular-nums"
+            >
+              {Math.round(zoom * 100)}%
+            </Button>
+            <Button variant="outlined" icon="zoom-in" onClick={zoomIn} title="Zoom in" />
+            <Button variant="outlined" icon="zoom-to-fit" onClick={fit} title="Fit to screen">
+              Fit
+            </Button>
+          </ButtonGroup>
+        </div>
+      )}
     </div>
   );
 }
@@ -140,14 +168,14 @@ function SpecBanner({ spec }: { spec: Spec }) {
   if (!fallback && !demo) return null;
   const reasons = (spec.errors ?? []).slice(0, 3);
   return (
-    <div className="pointer-events-none absolute bottom-4 left-1/2 z-20 w-[min(600px,92%)] -translate-x-1/2">
+    <div className="pointer-events-none absolute bottom-4 left-1/2 z-20 w-[min(600px,88%)] -translate-x-1/2">
       <Callout
         intent={fallback ? "danger" : "primary"}
         icon={fallback ? "warning-sign" : "info-sign"}
         title={
           fallback
-            ? "The answer model failed — this is a rough keyword sketch, not a real diagram"
-            : "No answer model configured — showing a rough demo"
+            ? "The answer model failed. This is a rough keyword sketch, not a real diagram."
+            : "No answer model configured. Showing a rough demo."
         }
         className="pointer-events-auto !bg-ink-800/95 text-xs shadow-2xl"
       >
@@ -157,15 +185,14 @@ function SpecBanner({ spec }: { spec: Spec }) {
             {reasons.length > 0 && (
               <ul className="mt-1.5 space-y-0.5 break-words font-mono text-[11px] text-rose-200">
                 {reasons.map((e, i) => (
-                  <li key={i}>• {e}</li>
+                  <li key={i}>{e}</li>
                 ))}
               </ul>
             )}
           </>
         ) : (
           <>
-            Set <code>VLM_BASE_URL</code> to a vision model so it actually reads your pages and
-            Excels.
+            Set <code>VLM_BASE_URL</code> to a vision model so it reads your pages and Excels.
           </>
         )}
       </Callout>
@@ -188,8 +215,8 @@ function EmptyState({ thinking }: { thinking?: boolean }) {
           </p>
         ) : (
           <p className="max-w-xs text-sm text-slate-500">
-            Describe what you want — the model reads your selected sources and builds a
-            cited, structured result here.
+            Describe what you want. The model reads your selected sources and builds a cited,
+            structured result here.
           </p>
         )}
       </div>

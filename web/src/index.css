@@ -29,7 +29,7 @@ body {
   -webkit-font-smoothing: antialiased;
 }
 
-/* ── Blueprint deep-navy / cobalt retheme ─────────────────────────────────
+/* Blueprint deep-navy / cobalt retheme.
    Blueprint 6 drives its components off CSS design tokens, so overriding a
    handful of tokens under the dark theme recolours the whole component set:
    a cobalt primary intent and navy surfaces, kept high-contrast for reading. */
@@ -42,7 +42,7 @@ body {
   --bp-surface-background-color-primary-hover: #4d8bff;
   --bp-surface-background-color-primary-active: #1f57c8;
   /* raise default surfaces (cards, inputs, menus) onto the navy palette */
-  --bp-surface-background-color-default-rest: #0e2236;
+  --bp-surface-background-color-default-rest: #0e2236; /* navy */
   --bp-surface-background-color-default-hover: #143049;
   --bp-surface-background-color-default-active: #1e3d5a;
 }
@@ -50,7 +50,7 @@ body {
   background: transparent;
   color: #e8eef7;
 }
-/* Cards / panels / inputs → navy, readable text, cobalt focus */
+/* Cards, panels, inputs: navy surface, readable text, cobalt focus */
 .bp6-dark .bp6-card,
 .bp6-dark .bp6-menu,
 .bp6-dark .bp6-popover .bp6-popover-content {
